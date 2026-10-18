@@ -75,6 +75,10 @@
   .id-org { font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--teal); font-weight:700; }
   .id-name { font-size:17px; font-weight:700; color:var(--navy); line-height:1.2; }
   .id-row b { color:var(--ink); font-weight:600; }
+  .sheet-head { text-align:center; border-bottom:2px solid var(--navy); padding-bottom:10px; margin-bottom:14px; }
+  .sheet-head h1 { margin:0; font-size:1.4rem; }
+  .sheet-sign { display:flex; justify-content:space-between; gap:24px; margin-top:36px; }
+  .sheet-sign div { border-top:1px solid #64748b; width:40%; padding-top:6px; font-size:.9rem; color:#334155; }
   .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   footer { text-align:center; color:var(--muted); font-size:.82rem; padding:22px; }
   @media print {
@@ -141,6 +145,7 @@ const CAN = {
   dispense:     ["system_admin", "hospital_admin", "pharmacist"],
   staff:        ["system_admin", "hospital_admin"],
   facilities:   ["system_admin"],
+  reports:      ["system_admin", "hospital_admin"],
   activity:     ["system_admin"],
 };
 
@@ -224,7 +229,7 @@ async function callStaffFn(body) {
 function renderNav() {
   document.getElementById("nav").innerHTML = me
     ? `<a href="#/">Dashboard</a><a href="#/patients">Patients</a><a href="#/appointments">Appointments</a>
-       <a href="#/visits">Visits</a>${allowed("facilities") ? `<a href="#/facilities">Facilities</a><a href="#/activity">Activity</a>` : ""}${(allowed("labResult") || allowed("dispense")) ? `<a href="#/work">Lab &amp; pharmacy</a>` : ""}${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
+       <a href="#/visits">Visits</a>${allowed("reports") ? `<a href="#/reports">Reports</a>` : ""}${allowed("facilities") ? `<a href="#/facilities">Facilities</a><a href="#/activity">Activity</a>` : ""}${(allowed("labResult") || allowed("dispense")) ? `<a href="#/work">Lab &amp; pharmacy</a>` : ""}${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
        <a href="#/logout">Log out (${esc(me.full_name)})</a>`
     : `<a href="#/login">Staff login</a>`;
 }
@@ -245,7 +250,9 @@ async function route() {
     else if (page === "patients" && id) html = await viewPatient(id);
     else if (page === "patients") html = await viewPatients();
     else if (page === "appointments") html = await viewAppointments();
+    else if (page === "visits" && id && parts[2] === "summary") html = await viewDischargeSummary(id);
     else if (page === "visits" && id) html = await viewVisit(id);
+    else if (page === "reports") html = allowed("reports") ? await viewReports() : card("You do not have access to this page.");
     else if (page === "visits") html = await viewVisits();
     else if (page === "work") html = await viewWork();
     else if (page === "activity") html = allowed("activity") ? await viewActivity() : card("You do not have access to this page.");
@@ -630,7 +637,7 @@ async function viewVisit(id) {
     sb.from("lab_requests").select("*").eq("encounter_id", id).order("requested_at"),
     sb.from("prescriptions").select("*").eq("encounter_id", id).order("prescribed_at"),
   ]);
-  return `<p class="no-print"><a class="link" href="#/patients/${e.patient_id}">← ${esc(patientName(p))}</a> &nbsp; <button class="secondary" onclick="window.print()">Print visit summary</button></p>
+  return `<p class="no-print"><a class="link" href="#/patients/${e.patient_id}">← ${esc(patientName(p))}</a> &nbsp; <a class="link" href="#/visits/${e.id}/summary">Visit summary for printing →</a></p>
   <h1>Visit ${esc(e.encounter_number)} <span class="tag ${statusClass(e.encounter_status)}">${esc(e.encounter_status.replace("_"," "))}</span></h1>
   <div class="grid">
     ${card(`<h2>Visit</h2>
@@ -784,6 +791,110 @@ async function viewWork() {
     </table>`) : "";
   if (!labCard && !rxCard) return card("Your role does not have lab or pharmacy tasks.");
   return `<h1>Lab &amp; pharmacy</h1>${labCard}${rxCard}`;
+}
+
+/* ---------- DISCHARGE / VISIT SUMMARY ---------- */
+async function viewDischargeSummary(id) {
+  const [er, ob, dg, lb, rx] = await Promise.all([
+    sb.from("encounters").select("*").eq("id", id).maybeSingle(),
+    sb.from("clinical_observations").select("*").eq("encounter_id", id).order("observed_at"),
+    sb.from("diagnoses").select("*").eq("encounter_id", id).order("diagnosed_at"),
+    sb.from("lab_requests").select("*").eq("encounter_id", id).order("requested_at"),
+    sb.from("prescriptions").select("*").eq("encounter_id", id).order("prescribed_at"),
+  ]);
+  const e = er.data;
+  if (!e) return card("Visit not found.");
+  const pr = await sb.from("patients").select("*").eq("id", e.patient_id).maybeSingle();
+  const p = pr.data;
+  if (!p) return card("Patient not found.");
+  const statusText = (e.encounter_status || "").replace("_", " ");
+  return `<div class="no-print" style="margin-bottom:14px">
+      <a class="link" href="#/visits/${e.id}">← Back to visit</a> &nbsp;
+      <button onclick="window.print()">Print summary</button>
+    </div>
+    <div class="card">
+      <div class="sheet-head">
+        <div class="muted">${esc(facilityName || "Hospital")} · Ministry of Health, Sierra Leone</div>
+        <h1>Visit summary</h1>
+        <div class="muted">${esc(e.encounter_number)}</div>
+      </div>
+      <table style="margin-bottom:14px">
+        <tr><th>Patient</th><td>${esc(patientName(p))} (${esc(p.patient_number)})</td></tr>
+        <tr><th>Date of birth</th><td>${fmtDate(p.date_of_birth)} ${age(p.date_of_birth) ? "(" + age(p.date_of_birth) + ")" : ""}</td></tr>
+        <tr><th>Sex</th><td>${esc(p.sex)}</td></tr>
+        <tr><th>Visit type</th><td>${esc(e.encounter_type)}</td></tr>
+        <tr><th>Started</th><td>${fmtDateTime(e.started_at)}</td></tr>
+        <tr><th>Ended</th><td>${e.ended_at ? fmtDateTime(e.ended_at) : "Still open"}</td></tr>
+        <tr><th>Status</th><td>${esc(statusText)}</td></tr>
+        <tr><th>Presenting complaint</th><td>${esc(e.presenting_complaint)}</td></tr>
+      </table>
+      <h2>Observations</h2>
+      <table style="margin-bottom:14px"><tr><th>Time</th><th>Observation</th><th>Value</th><th>Notes</th></tr>
+        ${(ob.data || []).map(o => `<tr><td>${fmtDateTime(o.observed_at)}</td><td>${esc(o.observation_name)}</td>
+          <td>${o.value_numeric ?? ""} ${esc(o.unit || "")} ${esc(o.value_text || "")}</td><td>${esc(o.notes)}</td></tr>`).join("")
+          || `<tr><td colspan="4" class="muted">None recorded.</td></tr>`}</table>
+      <h2>Diagnoses</h2>
+      <table style="margin-bottom:14px"><tr><th>Code</th><th>Description</th><th>Primary</th><th>Status</th></tr>
+        ${(dg.data || []).map(d => `<tr><td>${esc(d.diagnosis_code)}</td><td>${esc(d.diagnosis_description)}</td>
+          <td>${d.is_primary ? "Yes" : ""}</td><td>${esc(d.diagnosis_status)}</td></tr>`).join("")
+          || `<tr><td colspan="4" class="muted">None recorded.</td></tr>`}</table>
+      <h2>Lab tests</h2>
+      <table style="margin-bottom:14px"><tr><th>Test</th><th>Requested</th><th>Result</th><th>Status</th></tr>
+        ${(lb.data || []).map(l => `<tr><td>${esc(l.test_name)}</td><td>${fmtDateTime(l.requested_at)}</td>
+          <td>${l.result_value ? esc(l.result_value) + " " + esc(l.result_unit || "") : ""}</td><td>${esc(l.status)}</td></tr>`).join("")
+          || `<tr><td colspan="4" class="muted">None requested.</td></tr>`}</table>
+      <h2>Prescriptions</h2>
+      <table style="margin-bottom:14px"><tr><th>Medicine</th><th>Dose</th><th>Frequency</th><th>Days</th><th>Qty</th><th>Status</th></tr>
+        ${(rx.data || []).map(r => `<tr><td>${esc(r.medicine_name)}</td><td>${esc(r.dosage)}</td><td>${esc(r.frequency)}</td>
+          <td>${r.duration_days ?? ""}</td><td>${r.quantity ?? ""}</td><td>${esc(r.status)}</td></tr>`).join("")
+          || `<tr><td colspan="6" class="muted">None prescribed.</td></tr>`}</table>
+      <div class="sheet-sign"><div>Doctor's signature</div><div>Date</div></div>
+    </div>`;
+}
+
+/* ---------- DAILY REPORTS (system and hospital administrators) ---------- */
+async function viewReports() {
+  const days = 7;
+  const since = new Date(); since.setHours(0, 0, 0, 0); since.setDate(since.getDate() - (days - 1));
+  const iso = since.toISOString();
+  const [pt, en, lb, rx, ap] = await Promise.all([
+    sb.from("patients").select("created_at").gte("created_at", iso),
+    sb.from("encounters").select("started_at").gte("started_at", iso),
+    sb.from("lab_requests").select("requested_at").gte("requested_at", iso),
+    sb.from("prescriptions").select("dispensed_at").not("dispensed_at", "is", null).gte("dispensed_at", iso),
+    sb.from("appointments").select("scheduled_at, status").gte("scheduled_at", iso),
+  ]);
+  const dayKey = d => new Date(d).toLocaleDateString("en-CA");
+  const keys = [];
+  for (let i = 0; i < days; i++) { const d = new Date(since); d.setDate(d.getDate() + i); keys.push(dayKey(d)); }
+  const tally = (rows, field, filter = () => true) => {
+    const m = {};
+    (rows || []).filter(filter).forEach(r => { const k = dayKey(r[field]); m[k] = (m[k] || 0) + 1; });
+    return m;
+  };
+  const reg = tally(pt.data, "created_at");
+  const vis = tally(en.data, "started_at");
+  const labs = tally(lb.data, "requested_at");
+  const disp = tally(rx.data, "dispensed_at");
+  const appts = tally(ap.data, "scheduled_at");
+  const noShow = tally(ap.data, "scheduled_at", r => r.status === "no_show");
+  const sum = m => Object.values(m).reduce((a, b) => a + b, 0);
+  const rowsHtml = keys.slice().reverse().map(k => `<tr>
+      <td>${new Date(k).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}</td>
+      <td class="num">${reg[k] || 0}</td><td class="num">${appts[k] || 0}</td><td class="num">${noShow[k] || 0}</td>
+      <td class="num">${vis[k] || 0}</td><td class="num">${labs[k] || 0}</td><td class="num">${disp[k] || 0}</td></tr>`).join("");
+  return `<h1>Daily report</h1>
+  <p class="subtitle">${esc(facilityName)} · last ${days} days, including today. Figures cover this facility only.</p>
+  <div class="grid">
+    ${card(`<div class="stat-label">New patients</div><div class="stat">${sum(reg)}</div>`)}
+    ${card(`<div class="stat-label">Visits started</div><div class="stat">${sum(vis)}</div>`)}
+    ${card(`<div class="stat-label">Lab tests requested</div><div class="stat">${sum(labs)}</div>`)}
+    ${card(`<div class="stat-label">Medicines dispensed</div><div class="stat">${sum(disp)}</div>`)}
+  </div>
+  ${card(`<table>
+    <tr><th>Day</th><th class="num">New patients</th><th class="num">Appointments</th><th class="num">No-shows</th>
+        <th class="num">Visits</th><th class="num">Lab tests</th><th class="num">Dispensed</th></tr>
+    ${rowsHtml}</table>`)}`;
 }
 
 /* ---------- ACTIVITY (system administrators) ---------- */
