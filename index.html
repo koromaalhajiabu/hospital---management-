@@ -124,6 +124,10 @@ const CAN = {
   observe:      ["system_admin", "hospital_admin", "doctor", "nurse"],
   diagnose:     ["system_admin", "hospital_admin", "doctor"],
   endVisit:     ["system_admin", "hospital_admin", "doctor", "nurse"],
+  labOrder:     ["system_admin", "hospital_admin", "doctor", "nurse"],
+  labResult:    ["system_admin", "hospital_admin", "doctor", "laboratory_staff"],
+  prescribe:    ["system_admin", "hospital_admin", "doctor"],
+  dispense:     ["system_admin", "hospital_admin", "pharmacist"],
   staff:        ["system_admin", "hospital_admin"],
 };
 
@@ -178,7 +182,7 @@ function audit(action, entityType, entityId, details = {}) {
   }).then(({ error }) => { if (error) console.warn("Audit not saved:", error.message); });
 }
 function statusClass(s) {
-  return ({ completed:"ok", checked_in:"warn", in_progress:"warn", open:"info", scheduled:"", cancelled:"bad", no_show:"bad" })[s] ?? "";
+  return ({ completed:"ok", dispensed:"ok", checked_in:"warn", in_progress:"warn", open:"info", requested:"info", prescribed:"info", scheduled:"", cancelled:"bad", no_show:"bad" })[s] ?? "";
 }
 function patientName(p) { return p ? `${p.first_name} ${p.last_name}` : "?"; }
 function patientOptions(patients, selected = "") {
@@ -207,7 +211,7 @@ async function callStaffFn(body) {
 function renderNav() {
   document.getElementById("nav").innerHTML = me
     ? `<a href="#/">Dashboard</a><a href="#/patients">Patients</a><a href="#/appointments">Appointments</a>
-       <a href="#/visits">Visits</a>${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
+       <a href="#/visits">Visits</a>${(allowed("labResult") || allowed("dispense")) ? `<a href="#/work">Lab &amp; pharmacy</a>` : ""}${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
        <a href="#/logout">Log out (${esc(me.full_name)})</a>`
     : `<a href="#/login">Staff login</a>`;
 }
@@ -229,6 +233,7 @@ async function route() {
     else if (page === "appointments") html = await viewAppointments();
     else if (page === "visits" && id) html = await viewVisit(id);
     else if (page === "visits") html = await viewVisits();
+    else if (page === "work") html = await viewWork();
     else if (page === "staff") html = allowed("staff") ? await viewStaff() : card("You do not have access to this page.");
     else html = card("Page not found.");
   } catch (e) {
@@ -514,6 +519,10 @@ async function viewVisit(id) {
   const pr = await sb.from("patients").select("*").eq("id", e.patient_id).maybeSingle();
   const p = pr.data;
   const open = e.encounter_status === "open";
+  const [lr, rx] = await Promise.all([
+    sb.from("lab_requests").select("*").eq("encounter_id", id).order("requested_at"),
+    sb.from("prescriptions").select("*").eq("encounter_id", id).order("prescribed_at"),
+  ]);
   return `<p class="no-print"><a class="link" href="#/patients/${e.patient_id}">← ${esc(patientName(p))}</a> &nbsp; <button class="secondary" onclick="window.print()">Print visit summary</button></p>
   <h1>Visit ${esc(e.encounter_number)} <span class="tag ${statusClass(e.encounter_status)}">${esc(e.encounter_status.replace("_"," "))}</span></h1>
   <div class="grid">
@@ -546,7 +555,7 @@ async function viewVisit(id) {
   ${card(`<h2>Diagnoses</h2><table><tr><th>Code</th><th>Description</th><th>Primary</th><th>Status</th></tr>
     ${(dg.data || []).map(d => `<tr><td>${esc(d.diagnosis_code)}</td><td>${esc(d.diagnosis_description)}</td>
       <td>${d.is_primary ? "Yes" : ""}</td><td>${esc(d.diagnosis_status)}</td></tr>`).join("")
-      || `<tr><td colspan="4" class="muted">No diagnoses recorded.</td></tr>`}</table>`)}`;
+      || `<tr><td colspan="4" class="muted">No diagnoses recorded.</td></tr>`}</table>`)}${labRxSection(e, open, lr.data || [], rx.data || [])}`;
 }
 A.addObservation = async (encounterId, patientId, f) => {
   const d = Object.fromEntries(new FormData(f));
@@ -573,6 +582,102 @@ A.endVisit = async id => {
   audit("visit.end", "encounters", id);
   await run(sb.from("encounters").update({ encounter_status: "completed", ended_at: new Date().toISOString() }).eq("id", id), "Visit ended.");
 };
+
+function labRxSection(e, open, labs, rxs) {
+  const canOrder = allowed("labOrder") && open;
+  const canRx = allowed("prescribe") && open;
+  return `${card(`<h2>Lab requests</h2>
+    ${canOrder ? `<form onsubmit="A.addLabRequest('${e.id}', '${e.patient_id}', this); return false">
+      <input name="test_name" placeholder="Test, e.g. Full blood count" required>
+      <input name="test_code" placeholder="Code (optional)">
+      <button type="submit">Request test</button>
+    </form>` : ""}
+    <table><tr><th>Test</th><th>Requested</th><th>Status</th><th>Result</th></tr>
+    ${labs.map(l => `<tr><td>${esc(l.test_name)}</td><td>${fmtDateTime(l.requested_at)}</td>
+      <td><span class="tag ${statusClass(l.status)}">${esc(l.status.replace("_", " "))}</span></td>
+      <td>${l.result_value ? `${esc(l.result_value)} ${esc(l.result_unit || "")}` : ""}
+        ${l.result_notes ? `<div class="muted">${esc(l.result_notes)}</div>` : ""}</td></tr>`).join("")
+      || `<tr><td colspan="4" class="muted">No lab requests.</td></tr>`}
+    </table>`)}
+  ${card(`<h2>Prescriptions</h2>
+    ${canRx ? `<form onsubmit="A.addPrescription('${e.id}', '${e.patient_id}', this); return false">
+      <input name="medicine_name" placeholder="Medicine" required>
+      <input name="dosage" placeholder="Dose, e.g. 500 mg">
+      <input name="frequency" placeholder="Frequency, e.g. 3 times daily">
+      <input name="duration_days" type="number" min="1" placeholder="Days">
+      <input name="quantity" type="number" min="1" placeholder="Quantity">
+      <button type="submit">Prescribe</button>
+    </form>` : ""}
+    <table><tr><th>Medicine</th><th>Dose</th><th>Frequency</th><th>Qty</th><th>Status</th></tr>
+    ${rxs.map(r => `<tr><td>${esc(r.medicine_name)}</td><td>${esc(r.dosage)}</td><td>${esc(r.frequency)}</td>
+      <td>${r.quantity ?? ""}</td><td><span class="tag ${statusClass(r.status)}">${esc(r.status)}</span></td></tr>`).join("")
+      || `<tr><td colspan="5" class="muted">No prescriptions.</td></tr>`}
+    </table>`)}`;
+}
+A.addLabRequest = (encounterId, patientId, f) => {
+  const d = Object.fromEntries(new FormData(f));
+  if (!d.test_name.trim()) return;
+  audit("lab.request", "encounters", encounterId, { test: d.test_name.trim() });
+  run(sb.from("lab_requests").insert({
+    organization_id: me.organization_id, facility_id: me.facility_id, encounter_id: encounterId, patient_id: patientId,
+    test_name: d.test_name.trim(), test_code: d.test_code.trim() || null, status: "requested", requested_by: me.user_id,
+  }), "Lab test requested.");
+};
+A.addPrescription = (encounterId, patientId, f) => {
+  const d = Object.fromEntries(new FormData(f));
+  if (!d.medicine_name.trim()) return;
+  audit("prescription.create", "encounters", encounterId, { medicine: d.medicine_name.trim() });
+  run(sb.from("prescriptions").insert({
+    organization_id: me.organization_id, facility_id: me.facility_id, encounter_id: encounterId, patient_id: patientId,
+    medicine_name: d.medicine_name.trim(), dosage: d.dosage.trim() || null, frequency: d.frequency.trim() || null,
+    duration_days: d.duration_days ? Number(d.duration_days) : null, quantity: d.quantity ? Number(d.quantity) : null,
+    status: "prescribed", prescribed_by: me.user_id,
+  }), "Prescription saved.");
+};
+A.saveLabResult = (labId, f) => {
+  const d = Object.fromEntries(new FormData(f));
+  audit("lab.result", "lab_requests", labId);
+  run(sb.from("lab_requests").update({
+    result_value: d.result_value.trim(), result_unit: d.result_unit.trim() || null,
+    result_notes: d.result_notes.trim() || null, status: "completed",
+    resulted_by: me.user_id, resulted_at: new Date().toISOString(),
+  }).eq("id", labId), "Result saved.");
+};
+A.dispense = id => {
+  audit("prescription.dispense", "prescriptions", id);
+  run(sb.from("prescriptions").update({
+    status: "dispensed", dispensed_by: me.user_id, dispensed_at: new Date().toISOString(),
+  }).eq("id", id), "Medicine dispensed.");
+};
+async function viewWork() {
+  const [lab, rx, pr] = await Promise.all([
+    sb.from("lab_requests").select("*").in("status", ["requested", "in_progress"]).order("requested_at"),
+    sb.from("prescriptions").select("*").eq("status", "prescribed").order("prescribed_at"),
+    sb.from("patients").select("*"),
+  ]);
+  const byId = Object.fromEntries((pr.data || []).map(p => [p.id, p]));
+  const labCard = allowed("labResult") ? card(`<h2>Lab requests waiting for results</h2>
+    <table><tr><th>Requested</th><th>Patient</th><th>Test</th><th>Enter result</th></tr>
+    ${(lab.data || []).map(l => `<tr><td>${fmtDateTime(l.requested_at)}</td>
+      <td>${esc(patientName(byId[l.patient_id]))}</td><td>${esc(l.test_name)}</td>
+      <td><form onsubmit="A.saveLabResult('${l.id}', this); return false">
+        <input name="result_value" placeholder="Result" required style="width:120px">
+        <input name="result_unit" placeholder="Unit" style="width:80px">
+        <input name="result_notes" placeholder="Notes" style="width:140px">
+        <button type="submit">Save</button>
+      </form></td></tr>`).join("") || `<tr><td colspan="4" class="muted">No pending lab requests.</td></tr>`}
+    </table>`) : "";
+  const rxCard = allowed("dispense") ? card(`<h2>Prescriptions to dispense</h2>
+    <table><tr><th>Prescribed</th><th>Patient</th><th>Medicine</th><th>Dose</th><th>Qty</th><th></th></tr>
+    ${(rx.data || []).map(r => `<tr><td>${fmtDateTime(r.prescribed_at)}</td>
+      <td>${esc(patientName(byId[r.patient_id]))}</td><td>${esc(r.medicine_name)}</td>
+      <td>${esc(r.dosage)} ${esc(r.frequency)}</td><td>${r.quantity ?? ""}</td>
+      <td><button onclick="A.dispense('${r.id}')">Dispense</button></td></tr>`).join("")
+      || `<tr><td colspan="6" class="muted">Nothing waiting to be dispensed.</td></tr>`}
+    </table>`) : "";
+  if (!labCard && !rxCard) return card("Your role does not have lab or pharmacy tasks.");
+  return `<h1>Lab &amp; pharmacy</h1>${labCard}${rxCard}`;
+}
 
 /* ---------- STAFF (hospital administrators only) ---------- */
 async function viewStaff() {
