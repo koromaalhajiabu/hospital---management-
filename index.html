@@ -67,6 +67,13 @@
   .login-card button { width:100%; margin-top:4px; padding:12px; }
   .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   footer { text-align:center; color:var(--muted); font-size:.82rem; padding:22px; }
+  @media print {
+    header, footer, nav, .no-print, form, button, .flash { display:none !important; }
+    body { background:#fff; font-size:12pt; }
+    main { max-width:none; padding:0; }
+    .card { box-shadow:none; border:1px solid #999; page-break-inside:avoid; }
+    th { background:#eee !important; }
+  }
   @media (max-width:640px) {
     main { padding:18px 14px 32px; }
     h1 { font-size:1.35rem; }
@@ -353,7 +360,7 @@ async function viewPatient(id) {
   ]);
   const p = pr.data;
   if (!p) return card("Patient not found.");
-  return `<p><a class="link" href="#/patients">← All patients</a></p>
+  return `<p class="no-print"><a class="link" href="#/patients">← All patients</a> &nbsp; <button class="secondary" onclick="window.print()">Print patient card</button></p>
   <h1>${esc(patientName(p))} <span class="muted">· ${esc(p.patient_number)}</span></h1>
   <div class="grid">
     ${card(`<h2>Details</h2>
@@ -402,7 +409,26 @@ async function viewAppointments() {
   const patients = pr.data || [];
   const byId = Object.fromEntries(patients.map(p => [p.id, p]));
   const statuses = ["scheduled", "checked_in", "completed", "cancelled", "no_show"];
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const end = new Date(start); end.setDate(end.getDate() + 1);
+  const todays = (ar.data || []).filter(a => {
+    const t = new Date(a.scheduled_at);
+    return t >= start && t < end;
+  });
+  const queue = card(`<h2>Today's queue</h2>
+    <table><tr><th>Time</th><th>Patient</th><th>Department</th><th>Status</th><th></th></tr>
+    ${todays.map(a => `<tr>
+      <td>${new Date(a.scheduled_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</td>
+      <td><a class="link" href="#/patients/${a.patient_id}">${esc(patientName(byId[a.patient_id]))}</a></td>
+      <td>${esc(a.department)}</td>
+      <td><span class="tag ${statusClass(a.status)}">${esc(a.status.replace("_", " "))}</span></td>
+      <td class="no-print">${allowed("appointments") && a.status === "scheduled"
+        ? `<button class="secondary" onclick="A.setAppointmentStatus('${a.id}', 'checked_in')">Check in</button>` : ""}
+        ${allowed("startVisit") ? `<a class="link" href="#/patients/${a.patient_id}">Start visit</a>` : ""}</td>
+    </tr>`).join("") || `<tr><td colspan="5" class="muted">No appointments scheduled for today.</td></tr>`}
+    </table>`);
   return `<h1>Appointments</h1>
+  ${queue}
   ${allowed("appointments") ? card(`<h2>Book an appointment</h2>
     <form onsubmit="A.bookFromList(this); return false">
       <select name="patient_id" required><option value="">Patient</option>${patientOptions(patients)}</select>
@@ -488,7 +514,7 @@ async function viewVisit(id) {
   const pr = await sb.from("patients").select("*").eq("id", e.patient_id).maybeSingle();
   const p = pr.data;
   const open = e.encounter_status === "open";
-  return `<p><a class="link" href="#/patients/${e.patient_id}">← ${esc(patientName(p))}</a></p>
+  return `<p class="no-print"><a class="link" href="#/patients/${e.patient_id}">← ${esc(patientName(p))}</a> &nbsp; <button class="secondary" onclick="window.print()">Print visit summary</button></p>
   <h1>Visit ${esc(e.encounter_number)} <span class="tag ${statusClass(e.encounter_status)}">${esc(e.encounter_status.replace("_"," "))}</span></h1>
   <div class="grid">
     ${card(`<h2>Visit</h2>
