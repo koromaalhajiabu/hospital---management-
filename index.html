@@ -163,6 +163,13 @@ function age(dob) {
 function newCode(prefix) {
   return prefix + "-" + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1000).toString().padStart(3, "0");
 }
+function audit(action, entityType, entityId, details = {}) {
+  if (!me) return;
+  sb.from("audit_events").insert({
+    organization_id: me.organization_id, facility_id: me.facility_id, actor_user_id: me.user_id,
+    action, entity_type: entityType, entity_id: entityId, request_id: crypto.randomUUID(), details,
+  }).then(({ error }) => { if (error) console.warn("Audit not saved:", error.message); });
+}
 function statusClass(s) {
   return ({ completed:"ok", checked_in:"warn", in_progress:"warn", open:"info", scheduled:"", cancelled:"bad", no_show:"bad" })[s] ?? "";
 }
@@ -331,6 +338,7 @@ A.registerPatient = async f => {
     emergency_contact_phone: d.emergency_contact_phone.trim() || null, created_by: me.user_id,
   }).select("id").single();
   if (error) return alert(error.message);
+  audit("patient.register", "patients", data.id);
   flash("Patient registered.");
   location.hash = `#/patients/${data.id}`;
   route();
@@ -382,6 +390,7 @@ A.bookAppointment = async (patientId, f) => {
     scheduled_at: new Date(d.scheduled_at).toISOString(), department: d.department.trim(),
     reason: d.reason.trim() || null, status: "scheduled", created_by: me.user_id,
   }), "Appointment booked.");
+  audit("appointment.book", "patients", patientId);
 };
 
 /* ---------- APPOINTMENTS ---------- */
@@ -408,7 +417,7 @@ async function viewAppointments() {
       <td><a class="link" href="#/patients/${a.patient_id}">${esc(patientName(byId[a.patient_id]))}</a></td>
       <td>${esc(a.department)}<div class="muted">${esc(a.reason)}</div></td>
       <td><span class="tag ${statusClass(a.status)}">${esc(a.status.replace("_"," "))}</span></td>
-      <td>${allowed("appointments") ? `<select onchange="A.setAppointmentStatus(${a.id}, this.value)">
+      <td>${allowed("appointments") ? `<select onchange="A.setAppointmentStatus('${a.id}', this.value)">
         ${statuses.map(s => `<option value="${s}" ${s === a.status ? "selected" : ""}>${s.replace("_", " ")}</option>`).join("")}
       </select>` : ""}</td></tr>`).join("")
       || `<tr><td colspan="5" class="muted">No appointments yet.</td></tr>`}
@@ -421,8 +430,9 @@ A.bookFromList = async f => {
     scheduled_at: new Date(d.scheduled_at).toISOString(), department: d.department.trim(),
     reason: d.reason.trim() || null, status: "scheduled", created_by: me.user_id,
   }), "Appointment booked.");
+  audit("appointment.book", "patients", d.patient_id);
 };
-A.setAppointmentStatus = (id, status) => run(sb.from("appointments").update({ status }).eq("id", id), "Status updated.");
+A.setAppointmentStatus = (id, status) => { audit("appointment.status", "appointments", id, { status }); return run(sb.from("appointments").update({ status }).eq("id", id), "Status updated."); };
 
 /* ---------- VISITS ---------- */
 async function viewVisits() {
@@ -461,6 +471,7 @@ A.startVisit = async (patientId, f) => {
     started_at: new Date().toISOString(), attending_user_id: me.user_id, created_by: me.user_id,
   }).select("id").single();
   if (error) return alert(error.message);
+  audit("visit.start", "encounters", data.id);
   flash("Visit started.");
   location.hash = `#/visits/${data.id}`;
   route();
@@ -519,6 +530,7 @@ A.addObservation = async (encounterId, patientId, f) => {
     value_numeric: d.value_numeric === "" ? null : Number(d.value_numeric), value_text: d.value_text.trim() || null,
     unit: d.unit.trim() || null, observed_at: new Date().toISOString(), observed_by: me.user_id, notes: d.notes.trim() || null,
   }), "Observation saved.");
+  audit("observation.record", "encounters", encounterId);
 };
 A.addDiagnosis = async (encounterId, patientId, f) => {
   const d = Object.fromEntries(new FormData(f));
@@ -528,9 +540,11 @@ A.addDiagnosis = async (encounterId, patientId, f) => {
     diagnosis_description: d.diagnosis_description.trim(), is_primary: !!d.is_primary,
     diagnosis_status: "active", diagnosed_by: me.user_id, diagnosed_at: new Date().toISOString(),
   }), "Diagnosis saved.");
+  audit("diagnosis.record", "encounters", encounterId);
 };
 A.endVisit = async id => {
   if (!confirm("End this visit? You will not be able to add more records to it.")) return;
+  audit("visit.end", "encounters", id);
   await run(sb.from("encounters").update({ encounter_status: "completed", ended_at: new Date().toISOString() }).eq("id", id), "Visit ended.");
 };
 
