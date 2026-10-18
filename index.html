@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hospital Management System</title>
+<style>
+  :root {
+    --navy:#0a2540; --navy-2:#13365c; --teal:#0f766e; --teal-2:#14b8a6;
+    --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f6f8fb; --card:#ffffff;
+    --ok:#047857; --ok-bg:#d1fae5; --warn:#92400e; --warn-bg:#fef3c7; --bad:#b91c1c; --bad-bg:#fee2e2; --info:#1e40af; --info-bg:#dbeafe;
+    --radius:14px; --shadow:0 1px 2px rgba(15,23,42,.04), 0 4px 16px rgba(15,23,42,.06);
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--ink); line-height:1.5; font-size:15px; }
+  header { background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 100%); color:#fff; padding:0 24px; min-height:64px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; position:sticky; top:0; z-index:10; box-shadow:0 2px 12px rgba(10,37,64,.25); }
+  header .brand { font-weight:700; font-size:1.05rem; letter-spacing:.2px; color:#fff; text-decoration:none; display:flex; align-items:center; gap:10px; }
+  header nav { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+  header nav a { color:rgba(255,255,255,.82); text-decoration:none; padding:8px 12px; border-radius:8px; font-size:.92rem; transition:background .15s,color .15s; }
+  header nav a:hover { background:rgba(255,255,255,.1); color:#fff; }
+  main { max-width:1120px; margin:0 auto; padding:28px 20px 40px; }
+  h1 { font-size:1.6rem; font-weight:700; letter-spacing:-.01em; margin:0 0 6px; color:var(--navy); }
+  h2 { font-size:1rem; font-weight:600; margin:0 0 14px; color:var(--ink); letter-spacing:-.005em; }
+  .subtitle { color:var(--muted); font-size:.92rem; margin:0 0 22px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:20px; margin-bottom:18px; box-shadow:var(--shadow); overflow-x:auto; }
+  .card:hover { border-color:#cfd9e5; }
+  table { width:100%; border-collapse:separate; border-spacing:0; font-size:.92rem; }
+  th, td { padding:12px 14px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
+  th { background:transparent; color:var(--muted); font-size:.74rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid var(--line); }
+  tr:last-child td { border-bottom:0; }
+  tbody tr:hover td, table tr:not(:first-child):hover td { background:#f8fafc; }
+  td a.link { font-weight:600; }
+  input, select, textarea { font:inherit; font-size:.93rem; padding:10px 12px; border:1px solid #cbd5e1; border-radius:10px; margin:0; background:#fff; color:var(--ink); transition:border-color .15s, box-shadow .15s; outline:none; }
+  input:focus, select:focus, textarea:focus { border-color:var(--teal); box-shadow:0 0 0 4px rgba(20,184,166,.15); }
+  input[type=checkbox] { width:16px; height:16px; accent-color:var(--teal); }
+  form > * { margin:0 8px 8px 0; }
+  form > button:last-child { margin-right:0; }
+  button { font:inherit; font-size:.92rem; font-weight:600; padding:10px 18px; border:0; border-radius:10px; cursor:pointer; color:#fff; background:linear-gradient(135deg,var(--teal) 0%,#0d9488 100%); box-shadow:0 1px 2px rgba(15,118,110,.25); transition:transform .08s, box-shadow .15s, filter .15s; }
+  button:hover { filter:brightness(1.05); box-shadow:0 4px 12px rgba(15,118,110,.25); }
+  button:active { transform:translateY(1px); }
+  button.secondary { background:#fff; color:var(--navy); box-shadow:inset 0 0 0 1px #cbd5e1; }
+  button.danger { background:#fff; color:var(--bad); box-shadow:inset 0 0 0 1px #fecaca; }
+  button.danger:hover { background:var(--bad-bg); box-shadow:inset 0 0 0 1px #fca5a5; }
+  select { padding-right:30px; }
+  a.link { color:var(--teal); text-decoration:none; font-weight:500; }
+  a.link:hover { text-decoration:underline; }
+  .back { display:inline-block; margin-bottom:10px; font-size:.9rem; }
+  .flash { background:var(--ok-bg); color:var(--ok); border:1px solid #a7f3d0; padding:12px 16px; border-radius:12px; margin-bottom:18px; font-weight:500; box-shadow:var(--shadow); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:18px; margin-bottom:6px; }
+  .stat-card { position:relative; overflow:hidden; }
+  .stat-card::after { content:""; position:absolute; right:-24px; top:-24px; width:90px; height:90px; border-radius:50%; background:linear-gradient(135deg,rgba(20,184,166,.18),rgba(20,184,166,0)); }
+  .stat-label { color:var(--muted); font-size:.82rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; }
+  .stat { font-size:2.1rem; font-weight:700; color:var(--navy); letter-spacing:-.02em; margin:6px 0 8px; font-variant-numeric:tabular-nums; }
+  .muted { color:var(--muted); font-size:.87rem; }
+  .tag { display:inline-block; padding:3px 10px; border-radius:999px; background:var(--info-bg); color:var(--info); font-size:.76rem; font-weight:600; text-transform:capitalize; letter-spacing:.01em; white-space:nowrap; }
+  .tag.ok { background:var(--ok-bg); color:var(--ok); }
+  .tag.warn { background:var(--warn-bg); color:var(--warn); }
+  .tag.bad { background:var(--bad-bg); color:var(--bad); }
+  .tag.muted-tag { background:#eef2f6; color:var(--muted); }
+  .search { width:100%; max-width:420px; margin-bottom:14px; }
+  .login-wrap { min-height:70vh; display:flex; align-items:center; justify-content:center; }
+  .login-card { width:100%; max-width:420px; padding:34px 30px; }
+  .login-card .mark { width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg,var(--teal-2),var(--teal)); margin-bottom:16px; }
+  .login-card h2 { font-size:1.35rem; margin-bottom:4px; color:var(--navy); }
+  .login-card input { width:100%; margin-bottom:12px; }
+  .login-card button { width:100%; margin-top:4px; padding:12px; }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  footer { text-align:center; color:var(--muted); font-size:.82rem; padding:22px; }
+  @media (max-width:640px) {
+    main { padding:18px 14px 32px; }
+    h1 { font-size:1.35rem; }
+    .card { padding:16px; }
+    th, td { padding:9px 10px; font-size:.84rem; }
+    header { padding:12px 16px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="#/">🏥 Hospital Management</a>
+  <nav id="nav"></nav>
+</header>
+<main id="app"><div class="card">Loading…</div></main>
+<footer>Ministry of Health, Sierra Leone · Hospital Management System</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ==================================================================
+   CONFIGURATION (the publishable key is safe to place here)
+   ================================================================== */
+const SUPABASE_URL = "https://pxoyavjlzblmfrluyhuo.supabase.co";
+const SUPABASE_KEY = "sb_publishable_jZDw-WNWibvLDXVagj5hAQ_ujKgA_J3";
+
+// Some in-app previews cannot copy Headers objects, so send headers as a plain object.
+const plainFetch = (url, opts = {}) => {
+  const o = { ...opts };
+  if (o.headers && typeof o.headers.forEach === "function" && !Array.isArray(o.headers)) {
+    const h = {};
+    o.headers.forEach((v, k) => { h[k] = v; });
+    o.headers = h;
+  }
+  return fetch(url, o);
+};
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { global: { fetch: plainFetch } });
+
+const ROLE_LABEL = {
+  system_admin: "System admin", hospital_admin: "Hospital admin", records_officer: "Records officer",
+  doctor: "Doctor", nurse: "Nurse", pharmacist: "Pharmacist", laboratory_staff: "Laboratory staff",
+  cashier: "Cashier", receptionist: "Receptionist", auditor: "Auditor",
+};
+// Which roles may do each task (mirrors the database access rules)
+const CAN = {
+  register:     ["system_admin", "hospital_admin", "records_officer", "doctor", "nurse", "receptionist"],
+  appointments: ["system_admin", "hospital_admin", "records_officer", "doctor", "nurse", "receptionist"],
+  startVisit:   ["system_admin", "hospital_admin", "records_officer", "doctor", "nurse"],
+  observe:      ["system_admin", "hospital_admin", "doctor", "nurse"],
+  diagnose:     ["system_admin", "hospital_admin", "doctor"],
+  endVisit:     ["system_admin", "hospital_admin", "doctor", "nurse"],
+  staff:        ["system_admin", "hospital_admin"],
+};
+
+const A = {};
+let me = null;          // { user_id, full_name, role, organization_id, facility_id, active }
+let facilityName = "";
+
+/* ---------- session and profile ---------- */
+async function loadMe() {
+  me = null; facilityName = "";
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return;
+  const { data } = await sb.from("user_profiles").select("*").eq("user_id", session.user.id).maybeSingle();
+  if (!data || !data.active) { await sb.auth.signOut(); return; }
+  me = data;
+  if (me.facility_id) {
+    const { data: f } = await sb.from("facilities").select("name").eq("id", me.facility_id).maybeSingle();
+    facilityName = f ? f.name : "";
+  }
+}
+const allowed = key => !!me && CAN[key].includes(me.role);
+
+/* ---------- helpers ---------- */
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+function flash(msg) { sessionStorage.setItem("sh_flash", msg); }
+function takeFlash() {
+  const m = sessionStorage.getItem("sh_flash");
+  sessionStorage.removeItem("sh_flash");
+  return m ? `<div class="flash">${esc(m)}</div>` : "";
+}
+function card(inner, extra = "", cls = "") { return `<div class="card ${cls}" ${extra}>${inner}</div>`; }
+function fmtDate(d) { return d ? new Date(d).toLocaleDateString("en-GB", { dateStyle: "medium" }) : ""; }
+function fmtDateTime(d) { return d ? new Date(d).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : ""; }
+function age(dob) {
+  if (!dob) return "";
+  const b = new Date(dob), n = new Date();
+  let a = n.getFullYear() - b.getFullYear();
+  if (n < new Date(n.getFullYear(), b.getMonth(), b.getDate())) a--;
+  return a + " yrs";
+}
+function newCode(prefix) {
+  return prefix + "-" + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1000).toString().padStart(3, "0");
+}
+function statusClass(s) {
+  return ({ completed:"ok", checked_in:"warn", in_progress:"warn", open:"info", scheduled:"", cancelled:"bad", no_show:"bad" })[s] ?? "";
+}
+function patientName(p) { return p ? `${p.first_name} ${p.last_name}` : "?"; }
+function patientOptions(patients, selected = "") {
+  return patients.map(p => `<option value="${p.id}" ${String(p.id) === String(selected) ? "selected" : ""}>${esc(patientName(p))} (${esc(p.patient_number)})</option>`).join("");
+}
+async function run(request, msg) {
+  const { error } = await request;
+  if (error) { alert(error.message); return false; }
+  if (msg) flash(msg);
+  route();
+  return true;
+}
+async function callStaffFn(body) {
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/sh-manage-staff`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + session.access_token, "apikey": SUPABASE_KEY },
+    body: JSON.stringify(body),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(out.error || "Something went wrong."); return false; }
+  return true;
+}
+
+/* ---------- navigation and router ---------- */
+function renderNav() {
+  document.getElementById("nav").innerHTML = me
+    ? `<a href="#/">Dashboard</a><a href="#/patients">Patients</a><a href="#/appointments">Appointments</a>
+       <a href="#/visits">Visits</a>${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
+       <a href="#/logout">Log out (${esc(me.full_name)})</a>`
+    : `<a href="#/login">Staff login</a>`;
+}
+
+async function route() {
+  renderNav();
+  const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  const [page, id] = parts;
+  if (page === "logout") { await A.logout(); return; }
+  if (!me && page !== "login") { location.hash = "#/login"; return; }
+  if (page === "login" && me) { location.hash = "#/"; return; }
+
+  let html;
+  try {
+    if (!page) html = await viewDashboard();
+    else if (page === "login") html = viewLogin();
+    else if (page === "patients" && id) html = await viewPatient(id);
+    else if (page === "patients") html = await viewPatients();
+    else if (page === "appointments") html = await viewAppointments();
+    else if (page === "visits" && id) html = await viewVisit(id);
+    else if (page === "visits") html = await viewVisits();
+    else if (page === "staff") html = allowed("staff") ? await viewStaff() : card("You do not have access to this page.");
+    else html = card("Page not found.");
+  } catch (e) {
+    html = card(`Something went wrong: ${esc(e.message)}`);
+  }
+  document.getElementById("app").innerHTML = takeFlash() + html;
+  const lf = document.getElementById("loginForm");
+  if (lf) lf.addEventListener("submit", e => { e.preventDefault(); A.login(lf); });
+}
+
+/* ---------- LOGIN ---------- */
+function viewLogin() {
+  return `<div class="login-wrap">` + card(`<div class="mark"></div><h2>Welcome back</h2>
+    <p class="muted" style="margin-top:0">Sign in to Connaught Hospital</p>
+    <form id="loginForm">
+      <input name="email" type="email" placeholder="Email" required autofocus style="width:100%">
+      <input name="password" type="password" placeholder="Password" required style="width:100%">
+      <button type="submit">Log in</button>
+    </form>
+    <p class="muted">Accounts are created by the hospital administrator.</p>`, 'style="width:100%"', "login-card") + `</div>`;
+}
+A.login = async f => {
+  const btn = f.querySelector("button");
+  if (btn) { btn.disabled = true; btn.textContent = "Logging in…"; }
+  try {
+    const d = Object.fromEntries(new FormData(f));
+    const { error } = await sb.auth.signInWithPassword({ email: d.email.trim(), password: d.password });
+    if (error) { showError("Login failed: " + error.message); return; }
+    await loadMe();
+    if (!me) { showError("This account is not an active staff account."); return; }
+    flash(`Welcome, ${me.full_name}.`);
+    location.hash = "#/";
+    route();
+  } catch (e) {
+    showError("Login error: " + (e && e.message ? e.message : e));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Log in"; }
+  }
+};
+function showError(msg) {
+  const box = document.createElement("div");
+  box.className = "flash";
+  box.style.cssText = "background:#fee2e2;color:#b91c1c;border-color:#fecaca";
+  box.textContent = msg;
+  const app = document.getElementById("app");
+  app.prepend(box);
+}
+window.addEventListener("error", e => showError("Page error: " + e.message));
+window.addEventListener("unhandledrejection", e => showError("Error: " + (e.reason && e.reason.message ? e.reason.message : e.reason)));
+A.logout = async () => {
+  await sb.auth.signOut();
+  me = null;
+  flash("You have logged out.");
+  location.hash = "#/login";
+  route();
+};
+
+/* ---------- DASHBOARD ---------- */
+async function viewDashboard() {
+  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(startOfDay); endOfDay.setDate(endOfDay.getDate() + 1);
+  const [p, a, v] = await Promise.all([
+    sb.from("patients").select("id", { count: "exact", head: true }),
+    sb.from("appointments").select("id", { count: "exact", head: true })
+      .gte("scheduled_at", startOfDay.toISOString()).lt("scheduled_at", endOfDay.toISOString()),
+    sb.from("encounters").select("id", { count: "exact", head: true }).eq("encounter_status", "open"),
+  ]);
+  return `<h1>Dashboard</h1>
+  <p class="subtitle">${esc(facilityName)} · Signed in as ${esc(me.full_name)} (${esc(ROLE_LABEL[me.role])})</p>
+  <div class="grid">
+    ${card(`<div class="stat-label">Registered patients</div><div class="stat">${p.count ?? 0}</div><a class="link" href="#/patients">View patients →</a>`, "", "stat-card")}
+    ${card(`<div class="stat-label">Appointments today</div><div class="stat">${a.count ?? 0}</div><a class="link" href="#/appointments">View appointments →</a>`, "", "stat-card")}
+    ${card(`<div class="stat-label">Open visits</div><div class="stat">${v.count ?? 0}</div><a class="link" href="#/visits">View visits →</a>`, "", "stat-card")}
+  </div>`;
+}
+
+/* ---------- PATIENTS ---------- */
+async function viewPatients() {
+  const { data: rows } = await sb.from("patients").select("*").order("last_name").order("first_name");
+  const list = rows || [];
+  return `<h1>Patients</h1>
+  ${allowed("register") ? card(`<h2>Register a patient</h2>
+    <form onsubmit="A.registerPatient(this); return false">
+      <input name="first_name" placeholder="First name" required>
+      <input name="last_name" placeholder="Last name" required>
+      <input name="date_of_birth" type="date" required>
+      <select name="sex" required><option value="">Sex</option><option value="female">Female</option><option value="male">Male</option><option value="intersex">Intersex</option><option value="unknown">Unknown</option></select>
+      <input name="phone" placeholder="Phone">
+      <input name="address" placeholder="Address">
+      <input name="emergency_contact_name" placeholder="Emergency contact name">
+      <input name="emergency_contact_phone" placeholder="Emergency contact phone">
+      <button type="submit">Register patient</button>
+    </form>`) : ""}
+  ${card(`<input id="psearch" class="search" placeholder="Search by name or patient number" oninput="A.filterPatients(this.value)">
+    <table><tr><th>Patient no.</th><th>Name</th><th>Age</th><th>Sex</th><th>Phone</th></tr>
+    ${list.map(p => `<tr class="prow" data-search="${esc((p.first_name + " " + p.last_name + " " + p.patient_number).toLowerCase())}">
+      <td>${esc(p.patient_number)}</td>
+      <td><a class="link" href="#/patients/${p.id}">${esc(patientName(p))}</a></td>
+      <td>${age(p.date_of_birth)}</td><td>${esc(p.sex)}</td><td>${esc(p.phone)}</td></tr>`).join("")
+      || `<tr><td colspan="5" class="muted">No patients registered yet.</td></tr>`}
+    </table>`)}`;
+}
+A.filterPatients = v => {
+  v = v.trim().toLowerCase();
+  document.querySelectorAll(".prow").forEach(r => r.style.display = r.dataset.search.includes(v) ? "" : "none");
+};
+A.registerPatient = async f => {
+  const d = Object.fromEntries(new FormData(f));
+  const { data, error } = await sb.from("patients").insert({
+    organization_id: me.organization_id, facility_id: me.facility_id,
+    patient_number: newCode("PT"), first_name: d.first_name.trim(), last_name: d.last_name.trim(),
+    date_of_birth: d.date_of_birth, sex: d.sex, phone: d.phone.trim() || null, address: d.address.trim() || null,
+    emergency_contact_name: d.emergency_contact_name.trim() || null,
+    emergency_contact_phone: d.emergency_contact_phone.trim() || null, created_by: me.user_id,
+  }).select("id").single();
+  if (error) return alert(error.message);
+  flash("Patient registered.");
+  location.hash = `#/patients/${data.id}`;
+  route();
+};
+
+async function viewPatient(id) {
+  const [pr, ar, er, pl] = await Promise.all([
+    sb.from("patients").select("*").eq("id", id).maybeSingle(),
+    sb.from("appointments").select("*").eq("patient_id", id).order("scheduled_at", { ascending: false }),
+    sb.from("encounters").select("*").eq("patient_id", id).order("started_at", { ascending: false }),
+    sb.from("patients").select("*").order("last_name"),
+  ]);
+  const p = pr.data;
+  if (!p) return card("Patient not found.");
+  return `<p><a class="link" href="#/patients">← All patients</a></p>
+  <h1>${esc(patientName(p))} <span class="muted">· ${esc(p.patient_number)}</span></h1>
+  <div class="grid">
+    ${card(`<h2>Details</h2>
+      <p>Date of birth: ${fmtDate(p.date_of_birth)} (${age(p.date_of_birth)})<br>
+      Sex: ${esc(p.sex)}<br>Phone: ${esc(p.phone || "-")}<br>Address: ${esc(p.address || "-")}<br>
+      Emergency contact: ${esc(p.emergency_contact_name || "-")} ${esc(p.emergency_contact_phone || "")}</p>`)}
+    ${allowed("appointments") ? card(`<h2>Book an appointment</h2>
+      <form onsubmit="A.bookAppointment('${p.id}', this); return false">
+        <input type="datetime-local" name="scheduled_at" required>
+        <input name="department" placeholder="Department" required>
+        <input name="reason" placeholder="Reason">
+        <button type="submit">Book</button>
+      </form>`) : ""}
+    ${allowed("startVisit") ? card(`<h2>Start a visit</h2>
+      <form onsubmit="A.startVisit('${p.id}', this); return false">
+        <select name="encounter_type"><option value="outpatient">Outpatient</option><option value="inpatient">Inpatient</option><option value="emergency">Emergency</option></select>
+        <input name="presenting_complaint" placeholder="Presenting complaint" required>
+        <button type="submit">Start visit</button>
+      </form>`) : ""}
+  </div>
+  ${card(`<h2>Visits</h2><table><tr><th>Visit no.</th><th>Type</th><th>Started</th><th>Status</th></tr>
+    ${(er.data || []).map(e => `<tr><td><a class="link" href="#/visits/${e.id}">${esc(e.encounter_number)}</a></td>
+      <td>${esc(e.encounter_type)}</td><td>${fmtDateTime(e.started_at)}</td><td><span class="tag ${statusClass(e.encounter_status)}">${esc(e.encounter_status.replace("_"," "))}</span></td></tr>`).join("")
+      || `<tr><td colspan="4" class="muted">No visits yet.</td></tr>`}</table>`)}
+  ${card(`<h2>Appointments</h2><table><tr><th>When</th><th>Department</th><th>Status</th><th>Reason</th></tr>
+    ${(ar.data || []).map(a => `<tr><td>${fmtDateTime(a.scheduled_at)}</td><td>${esc(a.department)}</td>
+      <td><span class="tag">${esc(a.status)}</span></td><td>${esc(a.reason)}</td></tr>`).join("")
+      || `<tr><td colspan="4" class="muted">No appointments.</td></tr>`}</table>`)}`;
+}
+A.bookAppointment = async (patientId, f) => {
+  const d = Object.fromEntries(new FormData(f));
+  await run(sb.from("appointments").insert({
+    organization_id: me.organization_id, facility_id: me.facility_id, patient_id: patientId,
+    scheduled_at: new Date(d.scheduled_at).toISOString(), department: d.department.trim(),
+    reason: d.reason.trim() || null, status: "scheduled", created_by: me.user_id,
+  }), "Appointment booked.");
+};
+
+/* ---------- APPOINTMENTS ---------- */
+async function viewAppointments() {
+  const [ar, pr] = await Promise.all([
+    sb.from("appointments").select("*").order("scheduled_at"),
+    sb.from("patients").select("*").order("last_name"),
+  ]);
+  const patients = pr.data || [];
+  const byId = Object.fromEntries(patients.map(p => [p.id, p]));
+  const statuses = ["scheduled", "checked_in", "completed", "cancelled", "no_show"];
+  return `<h1>Appointments</h1>
+  ${allowed("appointments") ? card(`<h2>Book an appointment</h2>
+    <form onsubmit="A.bookFromList(this); return false">
+      <select name="patient_id" required><option value="">Patient</option>${patientOptions(patients)}</select>
+      <input type="datetime-local" name="scheduled_at" required>
+      <input name="department" placeholder="Department" required>
+      <input name="reason" placeholder="Reason">
+      <button type="submit">Book</button>
+    </form>`) : ""}
+  ${card(`<table><tr><th>When</th><th>Patient</th><th>Department</th><th>Status</th><th>Change status</th></tr>
+    ${(ar.data || []).map(a => `<tr>
+      <td>${fmtDateTime(a.scheduled_at)}</td>
+      <td><a class="link" href="#/patients/${a.patient_id}">${esc(patientName(byId[a.patient_id]))}</a></td>
+      <td>${esc(a.department)}<div class="muted">${esc(a.reason)}</div></td>
+      <td><span class="tag ${statusClass(a.status)}">${esc(a.status.replace("_"," "))}</span></td>
+      <td>${allowed("appointments") ? `<select onchange="A.setAppointmentStatus(${a.id}, this.value)">
+        ${statuses.map(s => `<option value="${s}" ${s === a.status ? "selected" : ""}>${s.replace("_", " ")}</option>`).join("")}
+      </select>` : ""}</td></tr>`).join("")
+      || `<tr><td colspan="5" class="muted">No appointments yet.</td></tr>`}
+    </table>`)}`;
+}
+A.bookFromList = async f => {
+  const d = Object.fromEntries(new FormData(f));
+  await run(sb.from("appointments").insert({
+    organization_id: me.organization_id, facility_id: me.facility_id, patient_id: Number(d.patient_id) || d.patient_id,
+    scheduled_at: new Date(d.scheduled_at).toISOString(), department: d.department.trim(),
+    reason: d.reason.trim() || null, status: "scheduled", created_by: me.user_id,
+  }), "Appointment booked.");
+};
+A.setAppointmentStatus = (id, status) => run(sb.from("appointments").update({ status }).eq("id", id), "Status updated.");
+
+/* ---------- VISITS ---------- */
+async function viewVisits() {
+  const [er, pr] = await Promise.all([
+    sb.from("encounters").select("*").order("started_at", { ascending: false }),
+    sb.from("patients").select("*").order("last_name"),
+  ]);
+  const patients = pr.data || [];
+  const byId = Object.fromEntries(patients.map(p => [p.id, p]));
+  return `<h1>Visits</h1>
+  ${allowed("startVisit") ? card(`<h2>Start a visit</h2>
+    <form onsubmit="A.startVisitFromList(this); return false">
+      <select name="patient_id" required><option value="">Patient</option>${patientOptions(patients)}</select>
+      <select name="encounter_type"><option value="outpatient">Outpatient</option><option value="inpatient">Inpatient</option><option value="emergency">Emergency</option></select>
+      <input name="presenting_complaint" placeholder="Presenting complaint" required>
+      <button type="submit">Start visit</button>
+    </form>`) : ""}
+  ${card(`<table><tr><th>Visit no.</th><th>Patient</th><th>Type</th><th>Started</th><th>Status</th></tr>
+    ${(er.data || []).map(e => `<tr>
+      <td><a class="link" href="#/visits/${e.id}">${esc(e.encounter_number)}</a></td>
+      <td>${esc(patientName(byId[e.patient_id]))}</td><td>${esc(e.encounter_type)}</td>
+      <td>${fmtDateTime(e.started_at)}</td><td><span class="tag ${statusClass(e.encounter_status)}">${esc(e.encounter_status.replace("_"," "))}</span></td></tr>`).join("")
+      || `<tr><td colspan="5" class="muted">No visits yet.</td></tr>`}
+    </table>`)}`;
+}
+A.startVisitFromList = f => {
+  const d = Object.fromEntries(new FormData(f));
+  A.startVisit(d.patient_id, f);
+};
+A.startVisit = async (patientId, f) => {
+  const d = Object.fromEntries(new FormData(f));
+  const { data, error } = await sb.from("encounters").insert({
+    organization_id: me.organization_id, facility_id: me.facility_id, patient_id: patientId,
+    encounter_number: newCode("EN"), encounter_type: d.encounter_type,
+    presenting_complaint: d.presenting_complaint.trim(), encounter_status: "open",
+    started_at: new Date().toISOString(), attending_user_id: me.user_id, created_by: me.user_id,
+  }).select("id").single();
+  if (error) return alert(error.message);
+  flash("Visit started.");
+  location.hash = `#/visits/${data.id}`;
+  route();
+};
+
+async function viewVisit(id) {
+  const [er, ob, dg] = await Promise.all([
+    sb.from("encounters").select("*").eq("id", id).maybeSingle(),
+    sb.from("clinical_observations").select("*").eq("encounter_id", id).order("observed_at"),
+    sb.from("diagnoses").select("*").eq("encounter_id", id).order("diagnosed_at"),
+  ]);
+  const e = er.data;
+  if (!e) return card("Visit not found.");
+  const pr = await sb.from("patients").select("*").eq("id", e.patient_id).maybeSingle();
+  const p = pr.data;
+  const open = e.encounter_status === "open";
+  return `<p><a class="link" href="#/patients/${e.patient_id}">← ${esc(patientName(p))}</a></p>
+  <h1>Visit ${esc(e.encounter_number)} <span class="tag ${statusClass(e.encounter_status)}">${esc(e.encounter_status.replace("_"," "))}</span></h1>
+  <div class="grid">
+    ${card(`<h2>Visit</h2>
+      <p>Type: ${esc(e.encounter_type)}<br>Started: ${fmtDateTime(e.started_at)}<br>
+      ${e.ended_at ? `Ended: ${fmtDateTime(e.ended_at)}<br>` : ""}
+      Complaint: ${esc(e.presenting_complaint)}</p>
+      ${open && allowed("endVisit") ? `<button class="danger" onclick="A.endVisit('${e.id}')">End visit</button>` : ""}`)}
+    ${open && allowed("observe") ? card(`<h2>Record an observation</h2>
+      <form onsubmit="A.addObservation('${e.id}', '${e.patient_id}', this); return false">
+        <input name="observation_name" placeholder="e.g. Temperature" required>
+        <input name="value_numeric" type="number" step="any" placeholder="Value">
+        <input name="unit" placeholder="Unit, e.g. °C">
+        <input name="value_text" placeholder="Or text value">
+        <input name="notes" placeholder="Notes">
+        <button type="submit">Save</button>
+      </form>`) : ""}
+    ${open && allowed("diagnose") ? card(`<h2>Add a diagnosis</h2>
+      <form onsubmit="A.addDiagnosis('${e.id}', '${e.patient_id}', this); return false">
+        <input name="diagnosis_code" placeholder="ICD-10 code, e.g. B50" required>
+        <input name="diagnosis_description" placeholder="Description" required>
+        <label><input type="checkbox" name="is_primary" style="margin:0"> Primary</label>
+        <button type="submit">Save</button>
+      </form>`) : ""}
+  </div>
+  ${card(`<h2>Observations</h2><table><tr><th>Time</th><th>Observation</th><th>Value</th><th>Notes</th></tr>
+    ${(ob.data || []).map(o => `<tr><td>${fmtDateTime(o.observed_at)}</td><td>${esc(o.observation_name)}</td>
+      <td>${o.value_numeric ?? ""} ${esc(o.unit || "")} ${esc(o.value_text || "")}</td><td>${esc(o.notes)}</td></tr>`).join("")
+      || `<tr><td colspan="4" class="muted">No observations recorded.</td></tr>`}</table>`)}
+  ${card(`<h2>Diagnoses</h2><table><tr><th>Code</th><th>Description</th><th>Primary</th><th>Status</th></tr>
+    ${(dg.data || []).map(d => `<tr><td>${esc(d.diagnosis_code)}</td><td>${esc(d.diagnosis_description)}</td>
+      <td>${d.is_primary ? "Yes" : ""}</td><td>${esc(d.diagnosis_status)}</td></tr>`).join("")
+      || `<tr><td colspan="4" class="muted">No diagnoses recorded.</td></tr>`}</table>`)}`;
+}
+A.addObservation = async (encounterId, patientId, f) => {
+  const d = Object.fromEntries(new FormData(f));
+  await run(sb.from("clinical_observations").insert({
+    organization_id: me.organization_id, facility_id: me.facility_id, encounter_id: encounterId, patient_id: patientId,
+    observation_code: d.observation_name.trim().toLowerCase().replace(/\s+/g, "_"), observation_name: d.observation_name.trim(),
+    value_numeric: d.value_numeric === "" ? null : Number(d.value_numeric), value_text: d.value_text.trim() || null,
+    unit: d.unit.trim() || null, observed_at: new Date().toISOString(), observed_by: me.user_id, notes: d.notes.trim() || null,
+  }), "Observation saved.");
+};
+A.addDiagnosis = async (encounterId, patientId, f) => {
+  const d = Object.fromEntries(new FormData(f));
+  await run(sb.from("diagnoses").insert({
+    organization_id: me.organization_id, facility_id: me.facility_id, encounter_id: encounterId, patient_id: patientId,
+    diagnosis_code_system: "ICD-10", diagnosis_code: d.diagnosis_code.trim().toUpperCase(),
+    diagnosis_description: d.diagnosis_description.trim(), is_primary: !!d.is_primary,
+    diagnosis_status: "active", diagnosed_by: me.user_id, diagnosed_at: new Date().toISOString(),
+  }), "Diagnosis saved.");
+};
+A.endVisit = async id => {
+  if (!confirm("End this visit? You will not be able to add more records to it.")) return;
+  await run(sb.from("encounters").update({ encounter_status: "completed", ended_at: new Date().toISOString() }).eq("id", id), "Visit ended.");
+};
+
+/* ---------- STAFF (hospital administrators only) ---------- */
+async function viewStaff() {
+  const { data: staff } = await sb.from("user_profiles").select("*").order("full_name");
+  const roles = me.role === "system_admin" ? ROLES : ROLES.filter(r => r !== "system_admin");
+  return `<h1>Staff accounts</h1>
+  ${card(`<h2>Add a staff member</h2>
+    <form onsubmit="A.addStaff(this); return false">
+      <input name="full_name" placeholder="Full name" required>
+      <input name="email" type="email" placeholder="Email" required>
+      <input name="password" type="password" minlength="8" placeholder="Temporary password (min 8)" required>
+      <select name="role" required>${roles.map(r => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join("")}</select>
+      <input name="facility_id" type="hidden" value="${esc(me.facility_id)}">
+      <button type="submit">Create account</button>
+    </form>
+    <p class="muted">Staff are assigned to ${esc(facilityName || "your facility")}. Ask them to change their password after first login.</p>`)}
+  ${card(`<table><tr><th>Name</th><th>Role</th><th>Status</th><th></th></tr>
+    ${(staff || []).map(s => `<tr><td>${esc(s.full_name)}</td><td>${esc(ROLE_LABEL[s.role])}</td>
+      <td><span class="tag ${s.active ? "ok" : "muted-tag"}">${s.active ? "Active" : "Inactive"}</span></td>
+      <td>${s.active && s.user_id !== me.user_id ? `<button class="danger" onclick="A.deactivateStaff('${s.user_id}')">Deactivate</button>` : ""}</td></tr>`).join("")}
+    </table>`)}`;
+}
+A.addStaff = async f => {
+  const d = Object.fromEntries(new FormData(f));
+  if (await callStaffFn({ action: "create", email: d.email, password: d.password, full_name: d.full_name,
+                          role: d.role, facility_id: d.facility_id })) {
+    flash(`Account created for ${d.full_name}.`);
+    route();
+  }
+};
+A.deactivateStaff = async userId => {
+  if (!confirm("Deactivate this account? The person will no longer be able to log in.")) return;
+  if (await callStaffFn({ action: "deactivate", user_id: userId })) {
+    flash("Account deactivated.");
+    route();
+  }
+};
+
+/* ---------- start ---------- */
+(async function init() {
+  try { await loadMe(); }
+  catch (e) { document.getElementById("app").innerHTML = card(`Could not connect: ${esc(e.message)}`); return; }
+  window.addEventListener("hashchange", route);
+  if (!location.hash) location.hash = me ? "#/" : "#/login";
+  route();
+})();
+</script>
+</body>
+</html>
