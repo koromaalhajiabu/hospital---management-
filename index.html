@@ -131,6 +131,7 @@ const CAN = {
   dispense:     ["system_admin", "hospital_admin", "pharmacist"],
   staff:        ["system_admin", "hospital_admin"],
   facilities:   ["system_admin"],
+  activity:     ["system_admin"],
 };
 
 const A = {};
@@ -213,7 +214,7 @@ async function callStaffFn(body) {
 function renderNav() {
   document.getElementById("nav").innerHTML = me
     ? `<a href="#/">Dashboard</a><a href="#/patients">Patients</a><a href="#/appointments">Appointments</a>
-       <a href="#/visits">Visits</a>${allowed("facilities") ? `<a href="#/facilities">Facilities</a>` : ""}${(allowed("labResult") || allowed("dispense")) ? `<a href="#/work">Lab &amp; pharmacy</a>` : ""}${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
+       <a href="#/visits">Visits</a>${allowed("facilities") ? `<a href="#/facilities">Facilities</a><a href="#/activity">Activity</a>` : ""}${(allowed("labResult") || allowed("dispense")) ? `<a href="#/work">Lab &amp; pharmacy</a>` : ""}${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
        <a href="#/logout">Log out (${esc(me.full_name)})</a>`
     : `<a href="#/login">Staff login</a>`;
 }
@@ -236,6 +237,7 @@ async function route() {
     else if (page === "visits" && id) html = await viewVisit(id);
     else if (page === "visits") html = await viewVisits();
     else if (page === "work") html = await viewWork();
+    else if (page === "activity") html = allowed("activity") ? await viewActivity() : card("You do not have access to this page.");
     else if (page === "facilities") html = allowed("facilities") ? await viewFacilities() : card("You do not have access to this page.");
     else if (page === "staff") html = allowed("staff") ? await viewStaff() : card("You do not have access to this page.");
     else html = card("Page not found.");
@@ -681,6 +683,74 @@ async function viewWork() {
   if (!labCard && !rxCard) return card("Your role does not have lab or pharmacy tasks.");
   return `<h1>Lab &amp; pharmacy</h1>${labCard}${rxCard}`;
 }
+
+/* ---------- ACTIVITY (system administrators) ---------- */
+const ACTION_LABEL = {
+  "patient.register": "Registered patient", "appointment.book": "Booked appointment",
+  "appointment.status": "Changed appointment status", "visit.start": "Started visit",
+  "visit.end": "Ended visit", "observation.record": "Recorded observation",
+  "diagnosis.record": "Recorded diagnosis", "lab.request": "Requested lab test",
+  "lab.result": "Entered lab result", "prescription.create": "Prescribed medicine",
+  "prescription.dispense": "Dispensed medicine", "facility.create": "Added facility",
+  "facility.activate": "Activated facility", "facility.deactivate": "Deactivated facility",
+};
+async function viewActivity() {
+  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+  const [ev, pr, fc] = await Promise.all([
+    sb.from("audit_events").select("*").order("occurred_at", { ascending: false }).limit(300),
+    sb.from("user_profiles").select("user_id, full_name, role"),
+    sb.from("facilities").select("id, name"),
+  ]);
+  const events = ev.data || [];
+  const people = Object.fromEntries((pr.data || []).map(p => [p.user_id, p]));
+  const sites = Object.fromEntries((fc.data || []).map(f => [f.id, f.name]));
+  const todayCount = events.filter(e => new Date(e.occurred_at) >= startOfDay).length;
+  const actions = [...new Set(events.map(e => e.action))].sort();
+  const people2 = [...new Set(events.map(e => e.actor_user_id))];
+  return `<h1>Activity</h1>
+  <p class="subtitle">Latest 300 actions across all facilities in your organization.</p>
+  <div class="grid">
+    ${card(`<div class="stat-label">Actions today</div><div class="stat">${todayCount}</div>`)}
+    ${card(`<div class="stat-label">Shown</div><div class="stat">${events.length}</div>`)}
+    ${card(`<div class="stat-label">People active</div><div class="stat">${people2.length}</div>`)}
+  </div>
+  ${card(`<div class="actions" style="margin-bottom:12px">
+      <select id="actFilter" onchange="A.filterActivity()">
+        <option value="">All actions</option>
+        ${actions.map(a => `<option value="${esc(a)}">${esc(ACTION_LABEL[a] || a)}</option>`).join("")}
+      </select>
+      <select id="facFilter" onchange="A.filterActivity()">
+        <option value="">All facilities</option>
+        ${Object.entries(sites).map(([id, n]) => `<option value="${esc(id)}">${esc(n)}</option>`).join("")}
+      </select>
+      <input id="actSearch" class="search" placeholder="Search by person" oninput="A.filterActivity()" style="max-width:240px">
+    </div>
+    <table>
+      <tr><th>When</th><th>Person</th><th>Role</th><th>Action</th><th>Facility</th></tr>
+      <tbody id="actRows">
+      ${events.map(e => {
+        const who = people[e.actor_user_id];
+        return `<tr class="arow" data-action="${esc(e.action)}" data-fac="${esc(e.facility_id)}"
+                    data-who="${esc((who ? who.full_name : "") + " " + e.actor_user_id).toLowerCase()}">
+          <td>${fmtDateTime(e.occurred_at)}</td>
+          <td>${esc(who ? who.full_name : "Unknown user")}</td>
+          <td>${esc(who ? ROLE_LABEL[who.role] || who.role : "")}</td>
+          <td>${esc(ACTION_LABEL[e.action] || e.action)}${e.details && Object.keys(e.details).length
+            ? `<div class="muted">${esc(JSON.stringify(e.details))}</div>` : ""}</td>
+          <td>${esc(sites[e.facility_id] || "")}</td></tr>`;
+      }).join("") || `<tr><td colspan="5" class="muted">No activity recorded yet.</td></tr>`}
+      </tbody>
+    </table>`)}`;
+}
+A.filterActivity = () => {
+  const act = document.getElementById("actFilter").value;
+  const fac = document.getElementById("facFilter").value;
+  const q = document.getElementById("actSearch").value.trim().toLowerCase();
+  document.querySelectorAll(".arow").forEach(r => {
+    const ok = (!act || r.dataset.action === act) && (!fac || r.dataset.fac === fac) && (!q || r.dataset.who.includes(q));
+    r.style.display = ok ? "" : "none";
+  });
+};
 
 /* ---------- FACILITIES (system administrators) ---------- */
 async function viewFacilities() {
