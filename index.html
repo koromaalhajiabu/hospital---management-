@@ -67,6 +67,14 @@
   .login-card button { width:100%; margin-top:4px; padding:12px; }
   .patient-photo { float:right; width:120px; height:120px; object-fit:cover; border-radius:14px; border:1px solid var(--line); margin:0 0 10px 16px; }
   .patient-photo.placeholder { display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#e2f5f2,#d6e6f2); color:var(--navy); font-size:2rem; font-weight:700; }
+  .id-card { display:flex; width:360px; max-width:100%; height:228px; margin:0 auto; border-radius:14px; overflow:hidden; background:#fff; border:1px solid #cbd5e1; box-shadow:0 10px 28px rgba(10,37,64,.14); }
+  .id-side { width:34%; background:linear-gradient(135deg,#e2f5f2,#d6e6f2); display:flex; align-items:center; justify-content:center; }
+  .id-side img { width:100%; height:100%; object-fit:cover; }
+  .id-initials { font-size:2.2rem; font-weight:700; color:var(--navy); }
+  .id-main { flex:1; padding:14px 16px; display:flex; flex-direction:column; justify-content:center; gap:5px; font-size:12px; color:#334155; }
+  .id-org { font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--teal); font-weight:700; }
+  .id-name { font-size:17px; font-weight:700; color:var(--navy); line-height:1.2; }
+  .id-row b { color:var(--ink); font-weight:600; }
   .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   footer { text-align:center; color:var(--muted); font-size:.82rem; padding:22px; }
   @media print {
@@ -233,6 +241,7 @@ async function route() {
   try {
     if (!page) html = await viewDashboard();
     else if (page === "login") html = viewLogin();
+    else if (page === "patients" && id && parts[2] === "card") html = await viewPatientCard(id);
     else if (page === "patients" && id) html = await viewPatient(id);
     else if (page === "patients") html = await viewPatients();
     else if (page === "appointments") html = await viewAppointments();
@@ -386,7 +395,7 @@ async function viewPatient(id) {
       <input type="file" name="photo" accept="image/jpeg,image/png" required style="max-width:220px">
       <button type="submit" class="secondary">${p.photo_path ? "Replace photo" : "Upload photo"}</button>
     </form>` : "";
-  return `<p class="no-print"><a class="link" href="#/patients">← All patients</a> &nbsp; <button class="secondary" onclick="window.print()">Print patient card</button></p>
+  return `<p class="no-print"><a class="link" href="#/patients">← All patients</a> &nbsp; <a class="link" href="#/patients/${p.id}/card">Patient ID card →</a></p>
   <h1>${esc(patientName(p))} <span class="muted">· ${esc(p.patient_number)}</span></h1>
   <div class="grid">
     ${card(`<h2>Details</h2>${photoBlock}${photoForm}
@@ -522,6 +531,46 @@ A.bookFromList = async f => {
   audit("appointment.book", "patients", d.patient_id);
 };
 A.setAppointmentStatus = (id, status) => { audit("appointment.status", "appointments", id, { status }); return run(sb.from("appointments").update({ status }).eq("id", id), "Status updated."); };
+
+/* ---------- PATIENT ID CARD ---------- */
+async function viewPatientCard(id) {
+  const { data: p } = await sb.from("patients").select("*").eq("id", id).maybeSingle();
+  if (!p) return card("Patient not found.");
+  let photo = `<div class="id-initials">${esc(((p.first_name[0] || "") + (p.last_name[0] || "")).toUpperCase())}</div>`;
+  if (p.photo_path) {
+    const { data: signed } = await sb.storage.from("patient-photos").createSignedUrl(p.photo_path, 3600);
+    if (signed) photo = `<img src="${signed.signedUrl}" alt="">`;
+  }
+  return `<div class="no-print" style="text-align:center;margin-bottom:16px">
+      <a class="link" href="#/patients/${p.id}">← Back to patient</a> &nbsp;
+      <button onclick="window.print()">Print card</button>
+      <p class="muted">Prints at standard ID card size (86 × 54 mm). Use "Actual size" in the print dialog.</p>
+    </div>
+    <style>
+      @page { size: 86mm 54mm; margin: 0; }
+      @media print {
+        header, footer, .no-print, .flash { display:none !important; }
+        main { padding:0 !important; max-width:none !important; }
+        body { background:#fff; }
+        .id-card { box-shadow:none !important; border:0 !important; border-radius:0 !important; width:86mm !important; height:54mm !important; }
+        .id-main { font-size:7pt !important; padding:3mm 3.5mm !important; gap:0.6mm !important; }
+        .id-org { font-size:5pt !important; }
+        .id-name { font-size:10pt !important; }
+        .id-side { width:30mm !important; }
+      }
+    </style>
+    <div class="id-card">
+      <div class="id-side">${photo}</div>
+      <div class="id-main">
+        <div class="id-org">${esc(facilityName || "Hospital")} · Ministry of Health</div>
+        <div class="id-name">${esc(patientName(p))}</div>
+        <div class="id-row">No. <b>${esc(p.patient_number)}</b></div>
+        <div class="id-row">DOB <b>${fmtDate(p.date_of_birth)}</b> · Sex <b>${esc(p.sex)}</b></div>
+        <div class="id-row">Phone <b>${esc(p.phone || "-")}</b></div>
+        <div class="id-row">Emergency <b>${esc(p.emergency_contact_name || "-")} ${esc(p.emergency_contact_phone || "")}</b></div>
+      </div>
+    </div>`;
+}
 
 /* ---------- VISITS ---------- */
 async function viewVisits() {
