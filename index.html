@@ -178,8 +178,8 @@ function newCode(prefix) {
   return prefix + "-" + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 1000).toString().padStart(3, "0");
 }
 function audit(action, entityType, entityId, details = {}) {
-  if (!me) return;
-  sb.from("audit_events").insert({
+  if (!me) return Promise.resolve();
+  return sb.from("audit_events").insert({
     organization_id: me.organization_id, facility_id: me.facility_id, actor_user_id: me.user_id,
     action, entity_type: entityType, entity_id: entityId, request_id: crypto.randomUUID(), details,
   }).then(({ error }) => { if (error) console.warn("Audit not saved:", error.message); });
@@ -269,6 +269,7 @@ A.login = async f => {
     if (error) { showError("Login failed: " + error.message); return; }
     await loadMe();
     if (!me) { showError("This account is not an active staff account."); return; }
+    audit("auth.login", "user_profiles", me.user_id);
     flash(`Welcome, ${me.full_name}.`);
     location.hash = "#/";
     route();
@@ -289,6 +290,7 @@ function showError(msg) {
 window.addEventListener("error", e => showError("Page error: " + e.message));
 window.addEventListener("unhandledrejection", e => showError("Error: " + (e.reason && e.reason.message ? e.reason.message : e.reason)));
 A.logout = async () => {
+  if (me) await audit("auth.logout", "user_profiles", me.user_id);
   await sb.auth.signOut();
   me = null;
   flash("You have logged out.");
@@ -693,6 +695,7 @@ const ACTION_LABEL = {
   "lab.result": "Entered lab result", "prescription.create": "Prescribed medicine",
   "prescription.dispense": "Dispensed medicine", "facility.create": "Added facility",
   "facility.activate": "Activated facility", "facility.deactivate": "Deactivated facility",
+  "auth.login": "Signed in", "auth.logout": "Signed out",
 };
 async function viewActivity() {
   const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
