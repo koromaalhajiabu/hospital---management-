@@ -130,6 +130,7 @@ const CAN = {
   prescribe:    ["system_admin", "hospital_admin", "doctor"],
   dispense:     ["system_admin", "hospital_admin", "pharmacist"],
   staff:        ["system_admin", "hospital_admin"],
+  facilities:   ["system_admin"],
 };
 
 const A = {};
@@ -212,7 +213,7 @@ async function callStaffFn(body) {
 function renderNav() {
   document.getElementById("nav").innerHTML = me
     ? `<a href="#/">Dashboard</a><a href="#/patients">Patients</a><a href="#/appointments">Appointments</a>
-       <a href="#/visits">Visits</a>${(allowed("labResult") || allowed("dispense")) ? `<a href="#/work">Lab &amp; pharmacy</a>` : ""}${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
+       <a href="#/visits">Visits</a>${allowed("facilities") ? `<a href="#/facilities">Facilities</a>` : ""}${(allowed("labResult") || allowed("dispense")) ? `<a href="#/work">Lab &amp; pharmacy</a>` : ""}${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
        <a href="#/logout">Log out (${esc(me.full_name)})</a>`
     : `<a href="#/login">Staff login</a>`;
 }
@@ -235,6 +236,7 @@ async function route() {
     else if (page === "visits" && id) html = await viewVisit(id);
     else if (page === "visits") html = await viewVisits();
     else if (page === "work") html = await viewWork();
+    else if (page === "facilities") html = allowed("facilities") ? await viewFacilities() : card("You do not have access to this page.");
     else if (page === "staff") html = allowed("staff") ? await viewStaff() : card("You do not have access to this page.");
     else html = card("Page not found.");
   } catch (e) {
@@ -680,9 +682,52 @@ async function viewWork() {
   return `<h1>Lab &amp; pharmacy</h1>${labCard}${rxCard}`;
 }
 
+/* ---------- FACILITIES (system administrators) ---------- */
+async function viewFacilities() {
+  const { data: facs } = await sb.from("facilities").select("*").order("name");
+  const types = ["hospital", "clinic", "health_centre", "laboratory", "pharmacy"];
+  return `<h1>Facilities</h1>
+  ${card(`<h2>Add a facility</h2>
+    <form onsubmit="A.addFacility(this); return false">
+      <input name="name" placeholder="Facility name" required>
+      <input name="facility_code" placeholder="Code, e.g. CHN-002" required>
+      <input name="district" placeholder="District">
+      <select name="facility_type">${types.map(t => `<option value="${t}">${t.replace("_", " ")}</option>`).join("")}</select>
+      <button type="submit">Add facility</button>
+    </form>
+    <p class="muted">After adding a facility, create its hospital administrator on the Staff page and choose this facility.</p>`)}
+  ${card(`<table><tr><th>Name</th><th>Code</th><th>District</th><th>Type</th><th>Status</th><th></th></tr>
+    ${(facs || []).map(f => `<tr>
+      <td>${esc(f.name)}</td><td>${esc(f.facility_code)}</td><td>${esc(f.district)}</td><td>${esc(f.facility_type).replace("_", " ")}</td>
+      <td><span class="tag ${f.active ? "ok" : "muted-tag"}">${f.active ? "Active" : "Inactive"}</span></td>
+      <td><button class="${f.active ? "danger" : "secondary"}" onclick="A.setFacilityActive('${f.id}', ${!f.active})">${f.active ? "Deactivate" : "Activate"}</button></td>
+    </tr>`).join("") || `<tr><td colspan="6" class="muted">No facilities yet.</td></tr>`}
+    </table>`)}`;
+}
+A.addFacility = async f => {
+  const d = Object.fromEntries(new FormData(f));
+  const { data, error } = await sb.from("facilities").insert({
+    organization_id: me.organization_id, name: d.name.trim(), facility_code: d.facility_code.trim().toUpperCase(),
+    district: d.district.trim() || null, facility_type: d.facility_type, active: true,
+  }).select("id").single();
+  if (error) return alert(error.message);
+  audit("facility.create", "facilities", data.id, { code: d.facility_code.trim().toUpperCase() });
+  flash("Facility added.");
+  route();
+};
+A.setFacilityActive = async (id, active) => {
+  audit(active ? "facility.activate" : "facility.deactivate", "facilities", id);
+  await run(sb.from("facilities").update({ active }).eq("id", id), active ? "Facility activated." : "Facility deactivated.");
+};
+
 /* ---------- STAFF (hospital administrators only) ---------- */
 async function viewStaff() {
-  const { data: staff } = await sb.from("user_profiles").select("*").order("full_name");
+  const [{ data: staff }, { data: facs }] = await Promise.all([
+    sb.from("user_profiles").select("*").order("full_name"),
+    sb.from("facilities").select("id, name").order("name"),
+  ]);
+  const facilityOptions = (facs || []).map(f =>
+    `<option value="${f.id}" ${f.id === me.facility_id ? "selected" : ""}>${esc(f.name)}</option>`).join("");
   const roles = me.role === "system_admin" ? ROLES : ROLES.filter(r => r !== "system_admin");
   return `<h1>Staff accounts</h1>
   ${card(`<h2>Add a staff member</h2>
@@ -691,10 +736,10 @@ async function viewStaff() {
       <input name="email" type="email" placeholder="Email" required>
       <input name="password" type="password" minlength="8" placeholder="Temporary password (min 8)" required>
       <select name="role" required>${roles.map(r => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join("")}</select>
-      <input name="facility_id" type="hidden" value="${esc(me.facility_id)}">
+      <select name="facility_id" required>${facilityOptions}</select>
       <button type="submit">Create account</button>
     </form>
-    <p class="muted">Staff are assigned to ${esc(facilityName || "your facility")}. Ask them to change their password after first login.</p>`)}
+    <p class="muted">Ask new staff to change their password after their first login.</p>`)}
   ${card(`<table><tr><th>Name</th><th>Role</th><th>Status</th><th></th></tr>
     ${(staff || []).map(s => `<tr><td>${esc(s.full_name)}</td><td>${esc(ROLE_LABEL[s.role])}</td>
       <td><span class="tag ${s.active ? "ok" : "muted-tag"}">${s.active ? "Active" : "Inactive"}</span></td>
