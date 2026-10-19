@@ -241,6 +241,9 @@ async function route() {
   if (page === "logout") { await A.logout(); return; }
   if (!me && page !== "login") { location.hash = "#/login"; return; }
   if (page === "login" && me) { location.hash = "#/"; return; }
+  if (me && me.must_change_password && page !== "change-password" && page !== "logout") {
+    location.hash = "#/change-password"; return;
+  }
 
   let html;
   try {
@@ -252,6 +255,7 @@ async function route() {
     else if (page === "appointments") html = await viewAppointments();
     else if (page === "visits" && id && parts[2] === "summary") html = await viewDischargeSummary(id);
     else if (page === "visits" && id) html = await viewVisit(id);
+    else if (page === "change-password") html = viewChangePassword();
     else if (page === "reports") html = allowed("reports") ? await viewReports() : card("You do not have access to this page.");
     else if (page === "visits") html = await viewVisits();
     else if (page === "work") html = await viewWork();
@@ -263,6 +267,7 @@ async function route() {
     html = card(`Something went wrong: ${esc(e.message)}`);
   }
   document.getElementById("app").innerHTML = takeFlash() + html;
+  wirePasswordForm();
   const lf = document.getElementById("loginForm");
   if (lf) lf.addEventListener("submit", e => { e.preventDefault(); A.login(lf); });
 }
@@ -314,6 +319,59 @@ A.logout = async () => {
   flash("You have logged out.");
   location.hash = "#/login";
   route();
+};
+
+/* ---------- CHANGE PASSWORD (first login and by choice) ---------- */
+function viewChangePassword() {
+  const first = me && me.must_change_password;
+  return `<div class="login-wrap">` + card(`<div class="mark"></div><h2>${first ? "Set your password" : "Change password"}</h2>
+    <p class="muted" style="margin-top:0">${first ? "Your administrator gave you a temporary password. Choose your own before continuing." : ""}</p>
+    <form id="pwForm">
+      <input name="password" type="password" minlength="8" placeholder="New password (min 8 characters)" required style="width:100%;margin-bottom:12px">
+      <input name="confirm" type="password" minlength="8" placeholder="Confirm new password" required style="width:100%;margin-bottom:12px">
+      <button type="submit">Save password</button>
+    </form>`, 'style="width:100%"', "login-card") + `</div>`;
+}
+A.changePassword = async f => {
+  const d = Object.fromEntries(new FormData(f));
+  if (d.password !== d.confirm) return showError("The two passwords do not match.");
+  if (d.password.length < 8) return showError("Password must be at least 8 characters.");
+  const { error } = await sb.auth.updateUser({ password: d.password });
+  if (error) return showError("Could not change password: " + error.message);
+  const { error: flagErr } = await sb.rpc("clear_must_change_password");
+  if (flagErr) return showError("Password changed, but the flag could not be cleared: " + flagErr.message);
+  await loadMe();
+  audit("auth.password_change", "user_profiles", me.user_id);
+  flash("Password saved. Welcome.");
+  location.hash = "#/";
+  route();
+};
+function wirePasswordForm() {
+  const pf = document.getElementById("pwForm");
+  if (pf) pf.addEventListener("submit", e => { e.preventDefault(); A.changePassword(pf); });
+}
+
+/* ---------- BACKUP (system administrators) ---------- */
+A.downloadBackup = async () => {
+  if (!me || me.role !== "system_admin") return;
+  const tables = ["facilities", "user_profiles", "patients", "appointments", "encounters",
+                  "clinical_observations", "diagnoses", "lab_requests", "prescriptions", "audit_events"];
+  const results = await Promise.all(tables.map(t => sb.from(t).select("*").limit(100000)));
+  const out = { exported_at: new Date().toISOString(), facility: facilityName, exported_by: me.full_name, tables: {} };
+  const counts = {};
+  for (let i = 0; i < tables.length; i++) {
+    if (results[i].error) return alert(`Backup failed on ${tables[i]}: ${results[i].error.message}`);
+    out.tables[tables[i]] = results[i].data || [];
+    counts[tables[i]] = (results[i].data || []).length;
+  }
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `hospital-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  audit("backup.download", "facilities", me.facility_id, { counts });
+  flash("Backup downloaded.");
 };
 
 /* ---------- DASHBOARD ---------- */
@@ -885,6 +943,8 @@ async function viewReports() {
       <td class="num">${vis[k] || 0}</td><td class="num">${labs[k] || 0}</td><td class="num">${disp[k] || 0}</td></tr>`).join("");
   return `<h1>Daily report</h1>
   <p class="subtitle">${esc(facilityName)} · last ${days} days, including today. Figures cover this facility only.</p>
+  ${me.role === "system_admin" ? `<p><button class="secondary" onclick="A.downloadBackup()">Download backup (JSON)</button>
+    <span class="muted"> &nbsp;A copy of this facility's records, saved to your computer.</span></p>` : ""}
   <div class="grid">
     ${card(`<div class="stat-label">New patients</div><div class="stat">${sum(reg)}</div>`)}
     ${card(`<div class="stat-label">Visits started</div><div class="stat">${sum(vis)}</div>`)}
