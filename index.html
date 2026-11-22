@@ -419,7 +419,18 @@ async function viewDashboard() {
     ${card(`<div class="stat-label">Registered patients</div><div class="stat">${p.count ?? 0}</div><a class="link" href="#/patients">View patients →</a>`, "", "stat-card")}
     ${card(`<div class="stat-label">Appointments today</div><div class="stat">${a.count ?? 0}</div><a class="link" href="#/appointments">View appointments →</a>`, "", "stat-card")}
     ${card(`<div class="stat-label">Open visits</div><div class="stat">${v.count ?? 0}</div><a class="link" href="#/visits">View visits →</a>`, "", "stat-card")}
-  </div>`;
+  </div>
+  ${allowed("staff") ? `
+    <h2 style="margin:26px 0 12px">Hospital administration</h2>
+    <div class="grid">
+      <div class="card stat-card" style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:28px" aria-hidden="true">⚙️</div>
+        <h2 style="margin:0">Hospital settings</h2>
+        <p class="muted" style="margin:0">Edit your hospital name, facility code, district and facility type.</p>
+        <a class="link" href="#/settings">Open hospital settings →</a>
+      </div>
+    </div>` : ""}
+  `;
 }
 
 /* ---------- PATIENTS ---------- */
