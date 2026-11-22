@@ -132,6 +132,8 @@ button{border-radius:12px!important}
 <footer>Ministry of Health, Sierra Leone · Hospital Management System</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script>
 /* ==================================================================
    CONFIGURATION (the publishable key is safe to place here)
@@ -172,7 +174,7 @@ const CAN = {
   staff:        ["system_admin", "hospital_admin"],
   facilities:   ["system_admin"],
   reports:      ["system_admin", "hospital_admin"],
-  activity:     ["system_admin"],
+  activity:     ["system_admin"],\n  exports:      ["system_admin", "hospital_admin"],
 };
 
 const A = {};
@@ -257,7 +259,7 @@ async function callStaffFn(body) {
 function renderNav() {
   document.getElementById("nav").innerHTML = me
     ? `<a href="#/">Dashboard</a><a href="#/patients">Patients</a><a href="#/appointments">Appointments</a>
-       <a href="#/visits">Visits</a>${allowed("reports") ? `<a href="#/reports">Reports</a>` : ""}${allowed("facilities") ? `<a href="#/facilities">Facilities</a><a href="#/activity">Activity</a>` : ""}${(allowed("labResult") || allowed("dispense")) ? `<a href="#/work">Lab &amp; pharmacy</a>` : ""}${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
+       <a href="#/visits">Visits</a>${allowed("reports") ? `<a href="#/reports">Reports</a>` : ""}${allowed("exports") ? `<a href="#/exports">Bulk exports</a>` : ""}${allowed("facilities") ? `<a href="#/facilities">Facilities</a><a href="#/activity">Activity</a>` : ""}${(allowed("labResult") || allowed("dispense")) ? `<a href="#/work">Lab &amp; pharmacy</a>` : ""}${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
        <a href="#/settings">Hospital settings</a><a href="#/logout">Log out (${esc(me.full_name)})</a>`
     : `<a href="#/login">Staff login</a>`;
 }
@@ -285,6 +287,7 @@ async function route() {
     else if (page === "visits" && id) html = await viewVisit(id);
     else if (page === "change-password") html = viewChangePassword();
     else if (page === "reports") html = allowed("reports") ? await viewReports() : card("You do not have access to this page.");
+    else if (page === "exports") html = allowed("exports") ? viewExports() : card("You do not have access to bulk exports.");
     else if (page === "visits") html = await viewVisits();
     else if (page === "work") html = await viewWork();
     else if (page === "activity") html = allowed("activity") ? await viewActivity() : card("You do not have access to this page.");
@@ -401,6 +404,135 @@ A.downloadBackup = async () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   audit("backup.download", "facilities", me.facility_id, { counts });
   flash("Backup downloaded.");
+};
+
+
+/* ---------- BULK DATA EXPORT CENTRE ---------- */
+const EXPORT_DATASETS = [
+  { key:"patients", label:"Patients", date:"created_at" },
+  { key:"appointments", label:"Appointments", date:"scheduled_at" },
+  { key:"encounters", label:"Visits / encounters", date:"started_at" },
+  { key:"clinical_observations", label:"Clinical observations", date:"observed_at" },
+  { key:"diagnoses", label:"Diagnoses", date:"diagnosed_at" },
+  { key:"lab_requests", label:"Laboratory requests", date:"requested_at" },
+  { key:"prescriptions", label:"Prescriptions", date:"prescribed_at" },
+  { key:"user_profiles", label:"Staff profiles", date:"created_at" },
+  { key:"audit_events", label:"Audit events", date:"occurred_at" },
+  { key:"facilities", label:"Facilities", date:"created_at" },
+];
+function viewExports() {
+  return `<h1>Hospital Data Export Centre</h1>
+    <p class="subtitle">${esc(facilityName || "Hospital")} · Download selected records for authorised administration.</p>
+    ${card(`<h2>1. Select records</h2>
+      <div class="actions" style="margin-bottom:12px">
+        <button class="secondary" type="button" onclick="A.toggleExportChecks(true)">Select all</button>
+        <button class="secondary" type="button" onclick="A.toggleExportChecks(false)">Clear selection</button>
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
+        ${EXPORT_DATASETS.map(d=>`<label style="display:flex;align-items:center;gap:9px;padding:10px;border:1px solid var(--line);border-radius:10px"><input type="checkbox" class="export-table-check" value="${d.key}" checked><span>${d.label}</span></label>`).join("")}
+      </div>`)}
+    ${card(`<h2>2. Filter by date (optional)</h2>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+        <label>From date<input id="exportFrom" type="date" style="display:block;width:100%;margin-top:6px"></label>
+        <label>To date<input id="exportTo" type="date" style="display:block;width:100%;margin-top:6px"></label>
+      </div>
+      <p class="muted">Date filters apply to records that have a relevant date field. Tables without a date field are exported in full. Access remains controlled by your signed-in account and the database's row-level security.</p>`)}
+    ${card(`<h2>3. Download</h2>
+      <div class="actions">
+        <button type="button" onclick="A.runBulkExport('xlsx')">Download Excel (.xlsx)</button>
+        <button type="button" class="secondary" onclick="A.runBulkExport('csv')">Download CSV files (.zip)</button>
+        <button type="button" class="secondary" onclick="A.runBulkExport('json')">Download JSON (.zip)</button>
+        <button type="button" class="secondary" onclick="A.runBulkExport('pdf')">Print / Save PDF</button>
+      </div>
+      <p id="exportStatus" class="muted" role="status" aria-live="polite" style="margin-top:14px">Choose the records and a download format. Large exports may take some time.</p>`)}
+    <p class="muted">Patient and clinical information is confidential. Store exported files securely and share them only with authorised personnel.</p>`;
+}
+A.toggleExportChecks = checked => document.querySelectorAll(".export-table-check").forEach(x=>x.checked=checked);
+function exportCsv(rows) {
+  if (!rows.length) return "";
+  const cols=[...new Set(rows.flatMap(r=>Object.keys(r)))];
+  const cell=v=>{
+    let x= v===null || v===undefined ? "" : (typeof v==="object" ? JSON.stringify(v) : String(v));
+    if (/^[=+@-]/.test(x)) x="'"+x;
+    return '"' + x.replace(/"/g,'""') + '"';
+  };
+  return [cols.map(cell).join(","),...rows.map(r=>cols.map(c=>cell(r[c])).join(","))].join("\r\n");
+}
+function exportDownload(blob,name) {
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+async function fetchExportRows(dataset, from, to) {
+  const all=[]; let offset=0; const pageSize=1000;
+  while(true) {
+    let q=sb.from(dataset.key).select("*");
+    if(dataset.date && from) q=q.gte(dataset.date,from+"T00:00:00.000Z");
+    if(dataset.date && to) {
+      const end=new Date(to+"T00:00:00.000Z"); end.setUTCDate(end.getUTCDate()+1);
+      q=q.lt(dataset.date,end.toISOString());
+    }
+    const {data,error}=await q.range(offset,offset+pageSize-1);
+    if(error) throw new Error(dataset.label+": "+error.message);
+    const rows=data||[]; all.push(...rows);
+    if(rows.length<pageSize) break;
+    offset+=pageSize;
+    if(offset>=250000) throw new Error(dataset.label+" exceeds the 250,000-row export safety limit. Narrow the date range.");
+  }
+  return all;
+}
+A.runBulkExport = async format => {
+  if(!me || !["system_admin","hospital_admin"].includes(me.role)) return alert("You are not authorised to export hospital records.");
+  if(typeof XLSX==="undefined" || typeof JSZip==="undefined") return alert("Export libraries did not load. Check your internet connection and try again.");
+  const selected=[...document.querySelectorAll(".export-table-check:checked")].map(x=>EXPORT_DATASETS.find(d=>d.key===x.value)).filter(Boolean);
+  if(!selected.length) return alert("Select at least one record category.");
+  const from=document.getElementById("exportFrom").value, to=document.getElementById("exportTo").value;
+  if(from && to && from>to) return alert("The start date must be before or equal to the end date.");
+  const status=document.getElementById("exportStatus");
+  const buttons=[...document.querySelectorAll("#app button")]; buttons.forEach(b=>b.disabled=true);
+  try {
+    const bundle={exported_at:new Date().toISOString(),facility:facilityName,exported_by:me.full_name,date_from:from||null,date_to:to||null,tables:{}};
+    for(let i=0;i<selected.length;i++) {
+      status.textContent="Preparing "+selected[i].label+" ("+(i+1)+" of "+selected.length+")…";
+      bundle.tables[selected[i].key]=await fetchExportRows(selected[i],from,to);
+    }
+    const stamp=new Date().toISOString().slice(0,10),base="hospital-export-"+stamp;
+    if(format==="xlsx") {
+      const wb=XLSX.utils.book_new();
+      for(const d of selected) {
+        const rows=bundle.tables[d.key];
+        const ws=XLSX.utils.json_to_sheet(rows.length?rows:[{notice:"No records matched the selected filters"}]);
+        XLSX.utils.book_append_sheet(wb,ws,d.key.slice(0,31));
+      }
+      const bytes=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+      exportDownload(new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),base+".xlsx");
+    } else if(format==="csv" || format==="json") {
+      const zip=new JSZip();
+      if(format==="csv") {
+        for(const d of selected) zip.file(d.key+".csv",exportCsv(bundle.tables[d.key]));
+        zip.file("export-manifest.json",JSON.stringify({exported_at:bundle.exported_at,facility:bundle.facility,exported_by:bundle.exported_by,date_from:bundle.date_from,date_to:bundle.date_to,record_counts:Object.fromEntries(selected.map(d=>[d.key,bundle.tables[d.key].length]))},null,2));
+      } else zip.file("hospital-export.json",JSON.stringify(bundle,null,2));
+      const blob=await zip.generateAsync({type:"blob",compression:"DEFLATE"});
+      exportDownload(blob,base+(format==="csv"?"-csv-files.zip":"-json.zip"));
+    } else if(format==="pdf") {
+      const win=window.open("","_blank");
+      if(!win) throw new Error("Allow pop-ups for this site to open the printable export.");
+      const body=selected.map(d=>{
+        const rows=bundle.tables[d.key],cols=[...new Set(rows.flatMap(r=>Object.keys(r)))];
+        return "<h2>"+esc(d.label)+" ("+rows.length+")</h2>"+(rows.length
+          ? "<table><thead><tr>"+cols.map(c=>"<th>"+esc(c)+"</th>").join("")+"</tr></thead><tbody>"+rows.map(r=>"<tr>"+cols.map(c=>"<td>"+esc(typeof r[c]==="object"&&r[c]!==null?JSON.stringify(r[c]):r[c])).join("")+"</td>").join("")+"</tr></tbody></table>"
+          : "<p>No records matched the selected filters.</p>");
+      }).join("");
+      win.document.write("<!doctype html><html><head><title>Hospital data export</title><style>body{font:11px Arial;padding:20px;color:#111}h1{font-size:20px}h2{margin-top:24px}table{width:100%;border-collapse:collapse;margin-bottom:18px}th,td{border:1px solid #bbb;padding:5px;text-align:left;word-break:break-word}th{background:#eee}tr{page-break-inside:avoid}@media print{body{padding:0}}</style></head><body><h1>"+esc(facilityName||"Hospital")+" — Data Export</h1><p>Generated "+esc(bundle.exported_at)+" · "+esc(me.full_name)+"</p>"+body+"</body></html>");
+      win.document.close();win.focus();setTimeout(()=>win.print(),400);
+    }
+    const counts=Object.fromEntries(selected.map(d=>[d.key,bundle.tables[d.key].length]));
+    await audit("bulk_export.download","hospital_data",me.facility_id,{format,tables:Object.keys(counts),counts,date_from:from||null,date_to:to||null});
+    status.textContent="Export ready. "+selected.reduce((n,d)=>n+bundle.tables[d.key].length,0).toLocaleString()+" records processed.";
+  } catch(e) {
+    status.textContent="Export failed: "+e.message;
+    alert("Export failed: "+e.message);
+  } finally { buttons.forEach(b=>b.disabled=false); }
 };
 
 /* ---------- DASHBOARD ---------- */
