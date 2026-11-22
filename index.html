@@ -98,66 +98,30 @@
 </style>
 
 <style id="koroma-premium-dashboard-2026">
-:root{
-  --klt-accent:#0f766e;
-  --klt-glow:rgba(20,184,166,.14);
-  --klt-ease:cubic-bezier(.2,.75,.25,1);
-}
-html{scroll-behavior:smooth}
-.card,.panel,.stat,.stat-card,.kpi,.content-panel,.hero,.pagehead,.page-head,.login-card{
-  border-radius:18px!important;
-  transition:transform .24s var(--klt-ease),box-shadow .24s var(--klt-ease),border-color .24s var(--klt-ease);
-  box-shadow:0 12px 34px rgba(15,35,60,.075),inset 0 1px 0 rgba(255,255,255,.42);
-}
-.stat,.stat-card,.kpi{
-  position:relative;
-  overflow:hidden;
-  isolation:isolate;
-  animation:kltDashboardRise .55s var(--klt-ease) both;
-}
-.stat::after,.stat-card::after,.kpi::after{
-  content:"";
-  position:absolute;
-  width:155px;height:155px;
-  right:-62px;bottom:-88px;
-  border-radius:50%;
-  background:radial-gradient(circle,var(--klt-glow),transparent 70%);
-  pointer-events:none;
-  z-index:-1;
-}
-.card:hover,.panel:hover,.stat:hover,.stat-card:hover,.kpi:hover,.content-panel:hover{
-  transform:translateY(-2px);
-  box-shadow:0 18px 42px rgba(15,35,60,.11),inset 0 1px 0 rgba(255,255,255,.5);
-}
-button,.btn,.navbtn,.tab,nav a,nav button{
-  transition:transform .18s var(--klt-ease),filter .18s ease,box-shadow .18s ease,background-color .18s ease;
-}
-button:hover:not(:disabled),.btn:hover:not(:disabled){
-  filter:brightness(1.045);
-}
-button:active:not(:disabled),.btn:active:not(:disabled){
-  transform:translateY(1px) scale(.99);
-}
-input,select,textarea{
-  border-radius:11px;
-  transition:border-color .18s ease,box-shadow .18s ease;
-}
-input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{
-  outline:3px solid var(--klt-glow);
-  outline-offset:2px;
-}
-table tbody tr{transition:background-color .16s ease}
-table tbody tr:hover{background:var(--klt-glow)}
-@keyframes kltDashboardRise{
-  from{opacity:0;transform:translateY(9px)}
-  to{opacity:1;transform:translateY(0)}
-}
-@media(prefers-reduced-motion:reduce){
-  html{scroll-behavior:auto}
-  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
-}
+:root{--klt-accent:#14a99a;--klt-deep:#082d42;--klt-glow:rgba(20,169,154,.22)}
+html,body{min-height:100%;background:#edf4f7!important}
+body{background:radial-gradient(ellipse at 88% 0%,rgba(20,169,154,.16),transparent 34%),linear-gradient(135deg,#f4f8fa,#e9f2f5)!important}
+body>header{min-height:76px!important;padding:12px clamp(15px,3vw,34px)!important;background:linear-gradient(115deg,#08283e,#0b5360 65%,#117d7a)!important;box-shadow:0 16px 38px #062b4030!important;border-bottom:1px solid #ffffff22}
+header .brand{font-size:18px!important;letter-spacing:-.02em}
+header nav{gap:6px!important}
+header nav a{border:1px solid #ffffff20;border-radius:11px!important;background:#ffffff12;color:#e9fffc!important;font-size:12px!important;padding:9px 12px!important}
+header nav a:hover{background:#ffffff25!important}
+main#app{max-width:1320px!important;padding:clamp(20px,3vw,36px)!important}
+h1{font-size:clamp(26px,4vw,36px)!important;letter-spacing:-.04em!important;color:#092f46!important}
+.subtitle{display:inline-flex;align-items:center;padding:8px 13px;border-radius:99px;background:#dff4f1;color:#17665f!important;border:1px solid #bfe7e1;font-size:12px!important;font-weight:650}
+.card{border:1px solid #d8e6eb!important;border-radius:22px!important;background:linear-gradient(145deg,#fff,#f8fcfc)!important;box-shadow:0 16px 42px rgba(8,55,70,.09)!important;padding:clamp(17px,2.5vw,25px)!important}
+.grid{gap:16px!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;margin:18px 0!important}
+.stat-card{position:relative;overflow:hidden;background:linear-gradient(145deg,#fff,#eef9f8)!important;min-height:154px}
+.stat-card:after{content:"";position:absolute;right:-45px;bottom:-65px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,var(--klt-glow),transparent 70%)}
+.stat-label{font-size:11px!important;letter-spacing:.09em;text-transform:uppercase;color:#507a7e!important;font-weight:800}
+.stat{font-size:clamp(30px,4vw,42px)!important;font-weight:850!important;color:#0b6b70!important;line-height:1.1;margin:12px 0!important}
+a.link{display:inline-flex;margin-top:8px;font-weight:750;color:#087c79!important}
+button{border-radius:12px!important}
+@media(max-width:720px){header{align-items:flex-start!important}header nav{width:100%;overflow-x:auto;flex-wrap:nowrap!important}main#app{padding:18px 13px!important}.grid{grid-template-columns:1fr!important}}
+
 </style>
 
+<meta name="klt-dashboard-version" content="2026-11-22-premium-v2">
 </head>
 <body>
 <header>
