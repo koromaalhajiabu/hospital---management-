@@ -121,11 +121,11 @@ button{border-radius:12px!important}
 
 </style>
 
-<meta name="klt-dashboard-version" content="2026-11-22-premium-v2">
+<meta name="klt-dashboard-version" content="2026-11-22-premium-v3">
 </head>
 <body>
 <header>
-  <a class="brand" href="#/">🏥 Hospital Management</a>
+  <a class="brand" id="facilityBrand" href="#/">🏥 Connaught Hospital</a>
   <nav id="nav"></nav>
 </header>
 <main id="app"><div class="card">Loading…</div></main>
@@ -191,6 +191,8 @@ async function loadMe() {
     const { data: f } = await sb.from("facilities").select("name").eq("id", me.facility_id).maybeSingle();
     facilityName = f ? f.name : "";
   }
+  const brand = document.getElementById("facilityBrand");
+  if (brand && facilityName) brand.textContent = "🏥 " + facilityName;
 }
 const allowed = key => !!me && CAN[key].includes(me.role);
 
@@ -256,7 +258,7 @@ function renderNav() {
   document.getElementById("nav").innerHTML = me
     ? `<a href="#/">Dashboard</a><a href="#/patients">Patients</a><a href="#/appointments">Appointments</a>
        <a href="#/visits">Visits</a>${allowed("reports") ? `<a href="#/reports">Reports</a>` : ""}${allowed("facilities") ? `<a href="#/facilities">Facilities</a><a href="#/activity">Activity</a>` : ""}${(allowed("labResult") || allowed("dispense")) ? `<a href="#/work">Lab &amp; pharmacy</a>` : ""}${allowed("staff") ? `<a href="#/staff">Staff</a>` : ""}
-       <a href="#/logout">Log out (${esc(me.full_name)})</a>`
+       <a href="#/settings">Hospital settings</a><a href="#/logout">Log out (${esc(me.full_name)})</a>`
     : `<a href="#/login">Staff login</a>`;
 }
 
@@ -288,6 +290,7 @@ async function route() {
     else if (page === "activity") html = allowed("activity") ? await viewActivity() : card("You do not have access to this page.");
     else if (page === "facilities") html = allowed("facilities") ? await viewFacilities() : card("You do not have access to this page.");
     else if (page === "staff") html = allowed("staff") ? await viewStaff() : card("You do not have access to this page.");
+    else if (page === "settings") html = allowed("staff") ? await viewFacilitySettings() : card("Only hospital administrators can manage hospital settings.");
     else html = card("Page not found.");
   } catch (e) {
     html = card(`Something went wrong: ${esc(e.message)}`);
@@ -1088,6 +1091,57 @@ A.addFacility = async f => {
 A.setFacilityActive = async (id, active) => {
   audit(active ? "facility.activate" : "facility.deactivate", "facilities", id);
   await run(sb.from("facilities").update({ active }).eq("id", id), active ? "Facility activated." : "Facility deactivated.");
+};
+
+
+/* ---------- HOSPITAL SETTINGS (facility-specific) ---------- */
+async function viewFacilitySettings() {
+  if (!me.facility_id) return `<h1>Hospital settings</h1>${card("Your staff account is not assigned to a hospital facility. Ask the system administrator to assign one.")}`;
+  const { data: facility, error } = await sb.from("facilities")
+    .select("id,name,facility_code,district,facility_type,active")
+    .eq("id", me.facility_id).maybeSingle();
+  if (error) throw error;
+  if (!facility) return `<h1>Hospital settings</h1>${card("The hospital facility linked to your account could not be found.")}`;
+  const types = ["hospital","clinic","health_centre","laboratory","pharmacy"];
+  return `<h1>Hospital settings</h1>
+    <p class="subtitle">Manage the name and facility details for your assigned hospital. Changes apply only to this facility.</p>
+    ${card(`<h2>Hospital profile</h2>
+      <form id="hospitalSettingsForm" onsubmit="A.saveHospitalSettings(this);return false">
+        <label>Hospital / facility name</label>
+        <input name="name" value="${esc(facility.name)}" maxlength="160" required style="width:100%;margin:0 0 12px">
+        <label>Facility code</label>
+        <input name="facility_code" value="${esc(facility.facility_code)}" maxlength="40" required style="width:100%;margin:0 0 12px">
+        <label>District</label>
+        <input name="district" value="${esc(facility.district)}" maxlength="100" style="width:100%;margin:0 0 12px">
+        <label>Facility type</label>
+        <select name="facility_type" style="width:100%;margin:0 0 16px">${types.map(t=>`<option value="${t}" ${facility.facility_type===t?"selected":""}>${t.replaceAll("_"," ")}</option>`).join("")}</select>
+        <button type="submit">Save hospital settings</button>
+      </form>
+      <p class="muted" style="margin-top:14px">Facility status: <span class="tag ${facility.active?"ok":"muted-tag"}">${facility.active?"Active":"Inactive"}</span></p>`)}
+  `;
+}
+A.saveHospitalSettings = async form => {
+  if (!me || !["system_admin","hospital_admin"].includes(me.role) || !me.facility_id) return alert("You are not authorised to edit hospital settings.");
+  const d = Object.fromEntries(new FormData(form));
+  const updates = {
+    name: String(d.name||"").trim(),
+    facility_code: String(d.facility_code||"").trim().toUpperCase(),
+    district: String(d.district||"").trim() || null,
+    facility_type: d.facility_type
+  };
+  if (updates.name.length < 2 || !updates.facility_code) return alert("Enter a hospital name and facility code.");
+  const { data, error } = await sb.from("facilities").update(updates)
+    .eq("id", me.facility_id)
+    .select("id,name,facility_code,district,facility_type,active")
+    .maybeSingle();
+  if (error) return alert("Could not save hospital settings: " + error.message);
+  if (!data) return alert("No facility was updated. Check that your account has permission to edit this hospital.");
+  facilityName = data.name;
+  const brand = document.getElementById("facilityBrand");
+  if (brand) brand.textContent = "🏥 " + facilityName;
+  await audit("facility.settings.update","facilities",data.id,{name:data.name,facility_code:data.facility_code});
+  flash("Hospital settings saved.");
+  route();
 };
 
 /* ---------- STAFF (hospital administrators only) ---------- */
